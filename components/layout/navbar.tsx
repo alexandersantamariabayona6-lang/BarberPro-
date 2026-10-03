@@ -3,14 +3,76 @@
 import { useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
-import { Menu, Scissors, X } from "lucide-react";
+import { LogOut, Menu, Scissors, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { homeByRole, useAuth } from "@/lib/auth/auth-context";
 
 const links = [
   { href: "#servicios", label: "Servicios" },
   { href: "#barberos", label: "Barberos" },
   { href: "#contacto", label: "Contacto" },
 ];
+
+function AuthActions({
+  mobile,
+  onNavigate,
+}: {
+  mobile?: boolean;
+  onNavigate?: () => void;
+}) {
+  const { user, hydrated, logout } = useAuth();
+  const outline =
+    "border-gold/40 text-gold-light hover:bg-accent hover:text-gold-light";
+
+  if (!hydrated) return null;
+
+  if (!user) {
+    return (
+      <Button
+        asChild
+        variant="outline"
+        className={`${outline} ${mobile ? "w-full" : ""}`}
+      >
+        <Link href="/login" onClick={onNavigate}>
+          Iniciar sesión
+        </Link>
+      </Button>
+    );
+  }
+
+  return (
+    <div className={`flex items-center gap-2 ${mobile ? "w-full" : ""}`}>
+      {user.role === "cliente" ? (
+        <span
+          className={`text-sm text-muted-foreground ${mobile ? "flex-1" : ""}`}
+        >
+          Hola, {user.name.split(" ")[0]}
+        </span>
+      ) : (
+        <Button
+          asChild
+          variant="outline"
+          className={`${outline} ${mobile ? "flex-1" : ""}`}
+        >
+          <Link href={homeByRole[user.role]} onClick={onNavigate}>
+            Mi panel
+          </Link>
+        </Button>
+      )}
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label="Cerrar sesión"
+        onClick={() => {
+          logout();
+          onNavigate?.();
+        }}
+      >
+        <LogOut className="size-4" />
+      </Button>
+    </div>
+  );
+}
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
@@ -43,7 +105,8 @@ export default function Navbar() {
           ))}
         </ul>
 
-        <div className="hidden md:block">
+        <div className="hidden items-center gap-3 md:flex">
+          <AuthActions />
           <Button className="bg-gold-gradient font-semibold text-primary-foreground hover:opacity-90">
             Reservar cita
           </Button>
@@ -81,7 +144,8 @@ export default function Navbar() {
                   </a>
                 </li>
               ))}
-              <li className="pt-2">
+              <li className="flex flex-col gap-2 pt-2">
+                <AuthActions mobile onNavigate={() => setOpen(false)} />
                 <Button className="w-full bg-gold-gradient font-semibold text-primary-foreground hover:opacity-90">
                   Reservar cita
                 </Button>
