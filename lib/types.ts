@@ -53,3 +53,29 @@ export type Appointment = {
   time: string; // HH:mm
   status: AppointmentStatus;
 };
+
+export type Servicio = {
+  id: string;
+  nombre: string;
+  precio: number; // COP
+  duracionMin: number;
+};
+
+export type Barbero = {
+  id: string;
+  nombre: string;
+  especialidad: string;
+};
+
+export type Barberia = {
+  slug: string;
+  nombre: string;
+  barrio: string;
+  ciudad: string;
+  descripcion: string;
+  calificacion: number;
+  resenas: number;
+  horario: string;
+  servicios: Servicio[];
+  barberos: Barbero[];
+};

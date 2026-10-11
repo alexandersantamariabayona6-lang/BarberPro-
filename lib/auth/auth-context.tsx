@@ -15,7 +15,7 @@ export const MOCK_PASSWORD = "demo123";
 
 // A dónde va cada rol después de iniciar sesión
 export const homeByRole: Record<Role, string> = {
-  cliente: "/",
+  cliente: "/barberias",
   barbero: "/barbero",
   admin: "/admin",
 };
