@@ -8,9 +8,8 @@ import { Button } from "@/components/ui/button";
 import { homeByRole, useAuth } from "@/lib/auth/auth-context";
 
 const links = [
-  { href: "#servicios", label: "Servicios" },
-  { href: "#barberos", label: "Barberos" },
-  { href: "#contacto", label: "Contacto" },
+  { href: "/barberias", label: "Barberías" },
+  { href: "/#contacto", label: "Contacto" },
 ];
 
 function AuthActions({
@@ -95,20 +94,23 @@ export default function Navbar() {
         <ul className="hidden items-center gap-8 md:flex">
           {links.map((link) => (
             <li key={link.href}>
-              <a
+              <Link
                 href={link.href}
                 className="text-sm text-muted-foreground transition-colors hover:text-gold-light"
               >
                 {link.label}
-              </a>
+              </Link>
             </li>
           ))}
         </ul>
 
         <div className="hidden items-center gap-3 md:flex">
           <AuthActions />
-          <Button className="bg-gold-gradient font-semibold text-primary-foreground hover:opacity-90">
-            Reservar cita
+          <Button
+            asChild
+            className="bg-gold-gradient font-semibold text-primary-foreground hover:opacity-90"
+          >
+            <Link href="/barberias">Reservar cita</Link>
           </Button>
         </div>
 
@@ -135,19 +137,24 @@ export default function Navbar() {
             <ul className="flex flex-col gap-1 px-5 py-4">
               {links.map((link) => (
                 <li key={link.href}>
-                  <a
+                  <Link
                     href={link.href}
                     onClick={() => setOpen(false)}
                     className="block rounded-md px-3 py-3 text-base text-foreground transition-colors hover:bg-accent hover:text-gold-light"
                   >
                     {link.label}
-                  </a>
+                  </Link>
                 </li>
               ))}
               <li className="flex flex-col gap-2 pt-2">
                 <AuthActions mobile onNavigate={() => setOpen(false)} />
-                <Button className="w-full bg-gold-gradient font-semibold text-primary-foreground hover:opacity-90">
-                  Reservar cita
+                <Button
+                  asChild
+                  className="w-full bg-gold-gradient font-semibold text-primary-foreground hover:opacity-90"
+                >
+                  <Link href="/barberias" onClick={() => setOpen(false)}>
+                    Reservar cita
+                  </Link>
                 </Button>
               </li>
             </ul>
