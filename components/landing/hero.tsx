@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { motion } from "framer-motion";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -77,18 +78,14 @@ export default function Hero() {
           className="mt-9 flex w-full flex-col gap-3 sm:w-auto sm:flex-row"
         >
           <Button
+            asChild
             size="lg"
             className="h-12 bg-gold-gradient px-8 text-base font-semibold text-primary-foreground hover:opacity-90"
           >
-            Reservar cita
-            <ArrowRight className="ml-1 size-4" />
-          </Button>
-          <Button
-            size="lg"
-            variant="outline"
-            className="h-12 border-gold/40 px-8 text-base text-gold-light hover:bg-accent hover:text-gold-light"
-          >
-            Ver servicios
+            <Link href="/barberias">
+              Reservar cita
+              <ArrowRight className="ml-1 size-4" />
+            </Link>
           </Button>
         </motion.div>
 
