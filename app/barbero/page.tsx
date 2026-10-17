@@ -4,6 +4,7 @@ import RoleGuard from "@/components/auth/role-guard";
 import DashboardShell from "@/components/layout/dashboard-shell";
 import { useAuth } from "@/lib/auth/auth-context";
 import { appointments, barbers, services, users } from "@/lib/data/mock";
+import { toDateKey } from "@/lib/booking";
 
 function BarberContent() {
   const { user } = useAuth();

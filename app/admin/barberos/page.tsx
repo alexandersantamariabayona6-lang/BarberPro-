@@ -19,6 +19,7 @@ import { useAuth } from "@/lib/auth/auth-context";
 import { appointments, barbers, users } from "@/lib/data/mock";
 import type { ShopBarber } from "@/lib/types";
 
+
 type FormState = {
   name: string;
   email: string;
