@@ -41,23 +41,18 @@ function AuthActions({
 
   return (
     <div className={`flex items-center gap-2 ${mobile ? "w-full" : ""}`}>
-      {user.role === "cliente" ? (
-        <span
-          className={`text-sm text-muted-foreground ${mobile ? "flex-1" : ""}`}
+      <Button
+        asChild
+        variant="outline"
+        className={`${outline} ${mobile ? "flex-1" : ""}`}
+      >
+        <Link
+          href={user.role === "cliente" ? "/cliente" : homeByRole[user.role]}
+          onClick={onNavigate}
         >
-          Hola, {user.name.split(" ")[0]}
-        </span>
-      ) : (
-        <Button
-          asChild
-          variant="outline"
-          className={`${outline} ${mobile ? "flex-1" : ""}`}
-        >
-          <Link href={homeByRole[user.role]} onClick={onNavigate}>
-            Mi panel
-          </Link>
-        </Button>
-      )}
+          {user.role === "cliente" ? "Mis citas" : "Mi panel"}
+        </Link>
+      </Button>
       <Button
         variant="ghost"
         size="icon"
