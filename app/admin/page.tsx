@@ -1,6 +1,7 @@
 "use client";
 
 import RoleGuard from "@/components/auth/role-guard";
+import AdminNav from "@/components/admin/admin-nav";
 import DashboardShell from "@/components/layout/dashboard-shell";
 import { useAuth } from "@/lib/auth/auth-context";
 import { appointments, barbers, services } from "@/lib/data/mock";
@@ -20,6 +21,7 @@ function AdminContent() {
       title="Panel de administración"
       subtitle="Gestiona los barberos, servicios, precios y horarios de tu barbería."
     >
+      <AdminNav />
       <div className="grid gap-4 sm:grid-cols-3">
         {stats.map((stat) => (
           <div
