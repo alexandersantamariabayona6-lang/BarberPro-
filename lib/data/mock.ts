@@ -59,3 +59,81 @@ export const appointments: Appointment[] = [
   { id: "a-3", barbershopId: "shop-1", barberId: "b-2", serviceId: "sv-2", clientId: "u-cliente-1", date: "2026-10-06", time: "11:00", status: "confirmada" },
   { id: "a-4", barbershopId: "shop-2", barberId: "b-3", serviceId: "sv-4", clientId: "u-cliente-1", date: "2026-10-07", time: "16:00", status: "pendiente" },
 ];
+
+// ---- Datos de ejemplo para la analítica (últimos 28 días) ----
+function seedRng(seed: number) {
+  let a = seed;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function seedDateKey(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+const sampleClients: User[] = [
+  "Valentina Ruiz",
+  "Mateo Castro",
+  "Daniela Silva",
+  "Felipe Vargas",
+  "Natalia Soto",
+  "Julián Herrera",
+].map((name, i) => {
+  const client: User = {
+    id: `u-cliente-ej-${i + 1}`,
+    name,
+    email: `cliente${i + 1}@demo.com`,
+    role: "cliente",
+  };
+  users.push(client);
+  return client;
+});
+
+(function seedAppointments() {
+  const rng = seedRng(2026);
+  const hoursPool = [9, 10, 11, 12, 14, 15, 16, 17];
+  const now = new Date();
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
+
+  for (let offset = 0; offset <= 28; offset++) {
+    const day = new Date(today);
+    day.setDate(today.getDate() - offset);
+
+    for (const shop of barbershops) {
+      const shopServices = services.filter((s) => s.barbershopId === shop.id);
+      const shopBarbers = barbers.filter((b) => b.barbershopId === shop.id);
+      if (shopServices.length === 0 || shopBarbers.length === 0) continue;
+      if (day.getDay() === 0 && !shop.openHours.includes("Dom")) continue;
+
+      for (const barber of shopBarbers) {
+        const count = 1 + Math.floor(rng() * 4);
+        const hours = [...hoursPool].sort(() => rng() - 0.5).slice(0, count);
+
+        for (const hour of hours) {
+          // Hoy solo se generan las horas que ya pasaron
+          if (offset === 0 && hour >= now.getHours()) continue;
+          const service = shopServices[Math.floor(rng() * shopServices.length)];
+          const client = sampleClients[Math.floor(rng() * sampleClients.length)];
+          appointments.push({
+            id: `a-ej-${seedDateKey(day)}-${barber.id}-${hour}`,
+            barbershopId: shop.id,
+            barberId: barber.id,
+            serviceId: service.id,
+            clientId: client.id,
+            date: seedDateKey(day),
+            time: `${String(hour).padStart(2, "0")}:00`,
+            status: "confirmada",
+          });
+        }
+      }
+    }
+  }
+})();

@@ -228,9 +228,9 @@ function AppointmentsContent() {
 
       {past.length > 0 && (
         <section className="mt-10">
-          <h2 className="text-xl">Citas anteriores</h2>
+          <h2 className="text-xl">Ultimas citas realizadas</h2>
           <ul className="mt-4 space-y-3">
-            {past.map((a) => (
+            {past.slice(0, 10).map((a) => (
               <AppointmentRow key={a.id} appointment={a} />
             ))}
           </ul>
