@@ -9,6 +9,7 @@ import {
   getServicesByShop,
 } from "@/lib/data/queries";
 import { formatCOP } from "@/lib/format";
+import { ReservaModal } from "@/components/barberias/reserva-modal";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -96,9 +97,7 @@ export default async function BarberiaPage({ params }: Props) {
                 <span className="font-heading text-xl text-gold-light">
                   {formatCOP(s.price)}
                 </span>
-                <Button className="bg-gold-gradient font-semibold text-primary-foreground hover:opacity-90">
-                  Reservar
-                </Button>
+                  <ReservaModal shop={shop} service={s} barbers={barbers} />
               </div>
             </li>
           ))}
