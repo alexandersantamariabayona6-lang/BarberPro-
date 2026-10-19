@@ -1,9 +1,12 @@
 import { Directorio } from "@/components/barberias/directorio";
-import { getBarbershops } from "@/lib/data/queries";
+import { getDirectory } from "@/lib/data/queries";
 
 export const metadata = { title: "Barberías | BarberPro" };
+export const dynamic = "force-dynamic";
 
-export default function BarberiasPage() {
+export default async function BarberiasPage() {
+  const shops = await getDirectory();
+
   return (
     <main className="mx-auto max-w-6xl px-5 py-12">
       <div className="mb-10 text-center">
@@ -14,7 +17,7 @@ export default function BarberiasPage() {
           Elige tu lugar favorito y reserva en segundos.
         </p>
       </div>
-      <Directorio shops={getBarbershops()} />
+      <Directorio shops={shops} />
     </main>
   );
 }

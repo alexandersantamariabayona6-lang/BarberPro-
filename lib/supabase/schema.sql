@@ -274,3 +274,134 @@ grant execute on function public.my_barbershop() to authenticated;
 grant execute on function public.create_invitation(public.user_role) to authenticated;
 grant execute on function public.redeem_invitation(text) to authenticated;
 grant execute on function public.check_invitation(text) to anon, authenticated;
+
+
+-- ============ Fase 3.2: citas ============
+
+grant select on public.appointments to authenticated;
+
+-- Quién ve cada cita: el cliente la suya, el barbero las suyas, el admin las de su barbería
+create policy "Citas visibles según el rol"
+  on public.appointments for select to authenticated
+  using (
+    client_id = (select auth.uid())
+    or barber_id in (
+      select b.id from public.barbers b where b.profile_id = (select auth.uid())
+    )
+    or (public.my_role() = 'admin' and barbershop_id = public.my_barbershop())
+  );
+
+-- Quien puede ver una cita puede ver el nombre del cliente
+create policy "Ver perfiles de clientes con citas visibles"
+  on public.profiles for select to authenticated
+  using (
+    exists (select 1 from public.appointments a where a.client_id = profiles.id)
+  );
+
+-- Horarios ocupados de un barbero (solo hora y duración, sin datos personales)
+create or replace function public.busy_slots(p_barber uuid, p_date date)
+returns table (start_time time, duration_min integer)
+language sql stable security definer
+set search_path = ''
+as $$
+  select a.appt_time, s.duration_min
+  from public.appointments a
+  join public.services s on s.id = a.service_id
+  where a.barber_id = p_barber
+    and a.appt_date = p_date
+    and a.status <> 'cancelada';
+$$;
+
+-- Crear una cita (todas las validaciones en el servidor)
+create or replace function public.create_appointment(
+  p_service uuid, p_barber uuid, p_date date, p_time time
+)
+returns uuid
+language plpgsql security definer
+set search_path = ''
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_shop uuid;
+  v_duration integer;
+  v_barber_shop uuid;
+  v_id uuid;
+begin
+  if v_uid is null then
+    raise exception 'Debes iniciar sesión';
+  end if;
+  if public.my_role() <> 'cliente' then
+    raise exception 'Solo los clientes pueden reservar';
+  end if;
+
+  select barbershop_id, duration_min into v_shop, v_duration
+  from public.services where id = p_service;
+  if not found then
+    raise exception 'Servicio no encontrado';
+  end if;
+
+  select barbershop_id into v_barber_shop from public.barbers where id = p_barber;
+  if not found or v_barber_shop <> v_shop then
+    raise exception 'Ese barbero no pertenece a esta barbería';
+  end if;
+
+  if (p_date + p_time) <= (now() at time zone 'America/Bogota') then
+    raise exception 'Esa hora ya pasó';
+  end if;
+
+  if exists (
+    select 1
+    from public.appointments a
+    join public.services s on s.id = a.service_id
+    where a.barber_id = p_barber
+      and a.appt_date = p_date
+      and a.status <> 'cancelada'
+      and p_time < a.appt_time + make_interval(mins => s.duration_min)
+      and a.appt_time < p_time + make_interval(mins => v_duration)
+  ) then
+    raise exception 'Ese horario ya no está disponible';
+  end if;
+
+  insert into public.appointments
+    (barbershop_id, barber_id, service_id, client_id, appt_date, appt_time, status)
+  values
+    (v_shop, p_barber, p_service, v_uid, p_date, p_time, 'pendiente')
+  returning id into v_id;
+
+  return v_id;
+end;
+$$;
+
+-- Cancelar: el cliente su cita, o el admin las de su barbería
+create or replace function public.cancel_appointment(p_id uuid)
+returns void
+language plpgsql security definer
+set search_path = ''
+as $$
+declare
+  v_appt public.appointments%rowtype;
+begin
+  select * into v_appt from public.appointments where id = p_id;
+  if not found then
+    raise exception 'Cita no encontrada';
+  end if;
+
+  if not (
+    v_appt.client_id = auth.uid()
+    or (public.my_role() = 'admin' and v_appt.barbershop_id = public.my_barbershop())
+  ) then
+    raise exception 'No puedes cancelar esta cita';
+  end if;
+
+  update public.appointments set status = 'cancelada' where id = p_id;
+end;
+$$;
+
+-- Permisos
+revoke execute on function public.busy_slots(uuid, date) from public;
+revoke execute on function public.create_appointment(uuid, uuid, date, time) from public, anon;
+revoke execute on function public.cancel_appointment(uuid) from public, anon;
+
+grant execute on function public.busy_slots(uuid, date) to anon, authenticated;
+grant execute on function public.create_appointment(uuid, uuid, date, time) to authenticated;
+grant execute on function public.cancel_appointment(uuid) to authenticated;

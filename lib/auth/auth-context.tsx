@@ -63,7 +63,7 @@ async function fetchAppUser(authUser: {
   const mock = mockUsers.find(
     (u) => u.email.toLowerCase() === email.toLowerCase()
   );
-  if (mock) return { ...mock, role: profile.role as Role };
+  if (mock) return { ...mock, id: authUser.id, role: profile.role as Role };
 
   return {
     id: authUser.id,

@@ -3,8 +3,7 @@
 import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { getServicesByShop } from "@/lib/data/queries";
-import type { Barbershop } from "@/lib/types";
+import type { ShopWithDetails } from "@/lib/data/queries";
 import { BarberiaCard } from "./barberia-card";
 
 // Ignora mayúsculas y tildes: "medellin" encuentra "Medellín"
@@ -14,7 +13,7 @@ const normalizar = (texto: string) =>
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
 
-export function Directorio({ shops }: { shops: Barbershop[] }) {
+export function Directorio({ shops }: { shops: ShopWithDetails[] }) {
   const [busqueda, setBusqueda] = useState("");
 
   const filtradas = useMemo(() => {
@@ -25,7 +24,7 @@ export function Directorio({ shops }: { shops: Barbershop[] }) {
         normalizar(s.name).includes(q) ||
         normalizar(s.city).includes(q) ||
         normalizar(s.address).includes(q) ||
-        getServicesByShop(s.id).some((sv) => normalizar(sv.name).includes(q))
+        s.services.some((sv) => normalizar(sv.name).includes(q))
     );
   }, [busqueda, shops]);
 
