@@ -119,3 +119,158 @@ from (values
   ('the-gentlemans-cut', 'Afeitado tradicional', 'Afeitado con navaja y toalla caliente.', 30000, 35)
 ) as v(slug, name, description, price, duration_min)
 join public.barbershops b on b.slug = v.slug;
+
+
+-- ============ Fase 2A: perfiles, roles e invitaciones ============
+
+-- Cada usuario nuevo recibe un perfil. SIEMPRE como cliente:
+-- el rol nunca lo decide el navegador.
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  insert into public.profiles (id, full_name, role)
+  values (
+    new.id,
+    coalesce(nullif(new.raw_user_meta_data ->> 'full_name', ''), split_part(new.email, '@', 1)),
+    'cliente'
+  );
+  return new;
+end;
+$$;
+
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.handle_new_user();
+
+-- Perfiles: cada usuario lee el suyo y solo puede editar su nombre
+grant select on public.profiles to authenticated;
+grant update (full_name) on public.profiles to authenticated;
+
+create policy "Cada usuario ve su propio perfil"
+  on public.profiles for select to authenticated
+  using (id = (select auth.uid()));
+
+create policy "Cada usuario edita su propio perfil"
+  on public.profiles for update to authenticated
+  using (id = (select auth.uid()))
+  with check (id = (select auth.uid()));
+
+-- Ayudas para saber el rol y la barbería de quien está conectado
+create or replace function public.my_role()
+returns public.user_role
+language sql stable security definer
+set search_path = ''
+as $$ select role from public.profiles where id = (select auth.uid()) $$;
+
+create or replace function public.my_barbershop()
+returns uuid
+language sql stable security definer
+set search_path = ''
+as $$ select barbershop_id from public.profiles where id = (select auth.uid()) $$;
+
+-- Crear invitación: el root crea de admin, el admin crea de barbero
+create or replace function public.create_invitation(p_role public.user_role)
+returns text
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_role public.user_role := public.my_role();
+  v_shop uuid;
+  v_code text := 'BP-';
+  v_alphabet constant text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+begin
+  if v_role = 'root' and p_role = 'admin' then
+    v_shop := null;
+  elsif v_role = 'admin' and p_role = 'barbero' then
+    v_shop := public.my_barbershop();
+    if v_shop is null then
+      raise exception 'Primero debes crear tu barbería';
+    end if;
+  else
+    raise exception 'No tienes permiso para crear esta invitación';
+  end if;
+
+  for i in 1..8 loop
+    v_code := v_code || substr(v_alphabet, 1 + floor(random() * length(v_alphabet))::int, 1);
+  end loop;
+
+  insert into public.invitations (code, role, barbershop_id, created_by, expires_at)
+  values (v_code, p_role, v_shop, auth.uid(), now() + interval '7 days');
+
+  return v_code;
+end;
+$$;
+
+-- Revisar un código antes de registrarse (devuelve el rol o nada)
+create or replace function public.check_invitation(p_code text)
+returns public.user_role
+language sql stable security definer
+set search_path = ''
+as $$
+  select role from public.invitations
+  where code = upper(trim(p_code)) and used_at is null and expires_at > now();
+$$;
+
+-- Canjear el código: asigna el rol (y crea el barbero si corresponde)
+create or replace function public.redeem_invitation(p_code text)
+returns public.user_role
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_inv public.invitations%rowtype;
+  v_profile public.profiles%rowtype;
+begin
+  if v_uid is null then
+    raise exception 'Debes iniciar sesión';
+  end if;
+
+  select * into v_profile from public.profiles where id = v_uid;
+  if not found or v_profile.role <> 'cliente' then
+    raise exception 'Esta cuenta ya tiene un rol asignado';
+  end if;
+
+  select * into v_inv from public.invitations
+  where code = upper(trim(p_code)) and used_at is null and expires_at > now()
+  for update;
+  if not found then
+    raise exception 'Código inválido o vencido';
+  end if;
+
+  update public.profiles
+  set role = v_inv.role, barbershop_id = v_inv.barbershop_id
+  where id = v_uid;
+
+  if v_inv.role = 'barbero' then
+    insert into public.barbers (profile_id, barbershop_id, name, specialty)
+    values (v_uid, v_inv.barbershop_id, v_profile.full_name, 'Barbero');
+  end if;
+
+  update public.invitations set used_by = v_uid, used_at = now()
+  where code = v_inv.code;
+
+  return v_inv.role;
+end;
+$$;
+
+-- Permisos de las funciones
+revoke execute on function public.handle_new_user() from public, anon, authenticated;
+revoke execute on function public.my_role() from public, anon;
+revoke execute on function public.my_barbershop() from public, anon;
+revoke execute on function public.create_invitation(public.user_role) from public, anon;
+revoke execute on function public.redeem_invitation(text) from public, anon;
+revoke execute on function public.check_invitation(text) from public;
+
+grant execute on function public.my_role() to authenticated;
+grant execute on function public.my_barbershop() to authenticated;
+grant execute on function public.create_invitation(public.user_role) to authenticated;
+grant execute on function public.redeem_invitation(text) to authenticated;
+grant execute on function public.check_invitation(text) to anon, authenticated;

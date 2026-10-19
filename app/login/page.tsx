@@ -7,13 +7,12 @@ import { Scissors, Store, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { homeByRole, useAuth } from "@/lib/auth/auth-context";
-import { users } from "@/lib/data/mock";
+import { MOCK_PASSWORD, homeByRole, useAuth } from "@/lib/auth/auth-context";
 
 const demoAccounts = [
-  { id: "u-cliente-1", label: "Cliente", icon: UserRound },
-  { id: "u-barbero-1", label: "Barbero", icon: Scissors },
-  { id: "u-admin-1", label: "Admin de barbería", icon: Store },
+  { email: "laura@demo.com", label: "Cliente", icon: UserRound },
+  { email: "andres@demo.com", label: "Barbero", icon: Scissors },
+  { email: "carlos@demo.com", label: "Admin de barbería", icon: Store },
 ];
 
 export default function LoginPage() {
@@ -22,10 +21,14 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  function onSubmit(e: FormEvent) {
+  async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    const result = login(email, password);
+    setError("");
+    setLoading(true);
+    const result = await login(email, password);
+    setLoading(false);
     if (!result.ok) {
       setError(result.error);
       return;
@@ -33,9 +36,16 @@ export default function LoginPage() {
     router.push(homeByRole[result.user.role]);
   }
 
-  function enterAs(id: string) {
-    const found = loginAs(id);
-    if (found) router.push(homeByRole[found.role]);
+  async function enterAs(accountEmail: string) {
+    setError("");
+    setLoading(true);
+    const result = await loginAs(accountEmail);
+    setLoading(false);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    router.push(homeByRole[result.user.role]);
   }
 
   return (
@@ -91,11 +101,19 @@ export default function LoginPage() {
 
             <Button
               type="submit"
+              disabled={loading}
               className="h-11 w-full bg-gold-gradient font-semibold text-primary-foreground hover:opacity-90"
             >
-              Entrar
+              {loading ? "Entrando..." : "Entrar"}
             </Button>
           </form>
+
+          <p className="mt-4 text-center text-sm text-muted-foreground">
+            ¿No tienes cuenta?{" "}
+            <Link href="/registro" className="text-gold-light hover:underline">
+              Regístrate
+            </Link>
+          </p>
 
           <div className="my-6 flex items-center gap-3 text-xs uppercase tracking-widest text-muted-foreground">
             <span className="h-px flex-1 bg-border" />
@@ -104,29 +122,27 @@ export default function LoginPage() {
           </div>
 
           <div className="space-y-2">
-            {demoAccounts.map(({ id, label, icon: Icon }) => {
-              const account = users.find((u) => u.id === id);
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => enterAs(id)}
-                  className="flex w-full items-center gap-3 rounded-lg border border-border bg-background/40 px-4 py-3 text-left transition-colors hover:border-gold/50 hover:bg-accent"
-                >
-                  <span className="flex size-9 shrink-0 items-center justify-center rounded-full border border-gold/30 text-gold">
-                    <Icon className="size-4" />
+            {demoAccounts.map(({ email: accountEmail, label, icon: Icon }) => (
+              <button
+                key={accountEmail}
+                type="button"
+                disabled={loading}
+                onClick={() => enterAs(accountEmail)}
+                className="flex w-full items-center gap-3 rounded-lg border border-border bg-background/40 px-4 py-3 text-left transition-colors hover:border-gold/50 hover:bg-accent disabled:opacity-60"
+              >
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-full border border-gold/30 text-gold">
+                  <Icon className="size-4" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm text-foreground">
+                    Entrar como {label}
                   </span>
-                  <span className="min-w-0">
-                    <span className="block text-sm text-foreground">
-                      Entrar como {label}
-                    </span>
-                    <span className="block truncate text-xs text-muted-foreground">
-                      {account?.email} · demo123
-                    </span>
+                  <span className="block truncate text-xs text-muted-foreground">
+                    {accountEmail} · {MOCK_PASSWORD}
                   </span>
-                </button>
-              );
-            })}
+                </span>
+              </button>
+            ))}
           </div>
         </div>
       </div>

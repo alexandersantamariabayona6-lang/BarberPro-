@@ -4,13 +4,16 @@ import {
   createContext,
   useCallback,
   useContext,
-  useMemo,
-  useSyncExternalStore,
+  useEffect,
+  useState,
   type ReactNode,
 } from "react";
-import { users } from "@/lib/data/mock";
+import type { Session } from "@supabase/supabase-js";
+import { users as mockUsers } from "@/lib/data/mock";
+import { supabase } from "@/lib/supabase/client";
 import type { Role, User } from "@/lib/types";
 
+// Contraseña de las cuentas de prueba (@demo.com)
 export const MOCK_PASSWORD = "demo123";
 
 // A dónde va cada rol después de iniciar sesión
@@ -18,86 +21,189 @@ export const homeByRole: Record<Role, string> = {
   cliente: "/barberias",
   barbero: "/barbero",
   admin: "/admin",
+  root: "/root",
 };
 
-type LoginResult = { ok: true; user: User } | { ok: false; error: string };
+type AuthResult = { ok: true; user: User } | { ok: false; error: string };
+
+type RegisterInput = {
+  name: string;
+  email: string;
+  password: string;
+  code?: string;
+};
 
 type AuthContextValue = {
   user: User | null;
   hydrated: boolean;
-  login: (email: string, password: string) => LoginResult;
-  loginAs: (userId: string) => User | null;
-  logout: () => void;
+  login: (email: string, password: string) => Promise<AuthResult>;
+  loginAs: (email: string) => Promise<AuthResult>;
+  register: (input: RegisterInput) => Promise<AuthResult>;
+  logout: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-// Sesión falsa guardada en el navegador (solo para la maqueta)
-const KEY = "barberpro:user-id";
-const EVENT = "barberpro:auth-change";
+// Convierte el usuario de Supabase en el usuario que entiende la app.
+// PUENTE (se elimina en la Fase 3): las cuentas de prueba conservan los ids
+// del mock para que las vistas actuales sigan funcionando.
+async function fetchAppUser(authUser: {
+  id: string;
+  email?: string | null;
+}): Promise<User | null> {
+  const { data: profile, error } = await supabase
+    .from("profiles")
+    .select("full_name, role, barbershop_id")
+    .eq("id", authUser.id)
+    .single();
 
-function subscribe(callback: () => void) {
-  window.addEventListener("storage", callback);
-  window.addEventListener(EVENT, callback);
-  return () => {
-    window.removeEventListener("storage", callback);
-    window.removeEventListener(EVENT, callback);
+  if (error || !profile) return null;
+
+  const email = authUser.email ?? "";
+  const mock = mockUsers.find(
+    (u) => u.email.toLowerCase() === email.toLowerCase()
+  );
+  if (mock) return { ...mock, role: profile.role as Role };
+
+  return {
+    id: authUser.id,
+    name: profile.full_name,
+    email,
+    role: profile.role as Role,
+    barbershopId: profile.barbershop_id ?? undefined,
   };
 }
 
-function getSnapshot() {
-  try {
-    return localStorage.getItem(KEY);
-  } catch {
-    return null;
-  }
+function friendlyError(message: string) {
+  const m = message.toLowerCase();
+  if (m.includes("already registered")) return "Ese correo ya tiene una cuenta.";
+  if (m.includes("password"))
+    return "La contraseña no es válida. Usa al menos 6 caracteres.";
+  if (m.includes("rate limit"))
+    return "Demasiados intentos. Espera un momento e inténtalo de nuevo.";
+  return "No pudimos crear la cuenta. Inténtalo de nuevo.";
 }
-
-function setStoredUser(id: string | null) {
-  try {
-    if (id) localStorage.setItem(KEY, id);
-    else localStorage.removeItem(KEY);
-  } catch {}
-  window.dispatchEvent(new Event(EVENT));
-}
-
-const noopSubscribe = () => () => {};
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const userId = useSyncExternalStore(subscribe, getSnapshot, () => null);
-  const hydrated = useSyncExternalStore(
-    noopSubscribe,
-    () => true,
-    () => false
-  );
+  const [user, setUser] = useState<User | null>(null);
+  const [hydrated, setHydrated] = useState(false);
 
-  const user = useMemo(
-    () => users.find((u) => u.id === userId) ?? null,
-    [userId]
-  );
+  useEffect(() => {
+    let active = true;
 
-  const login = useCallback((email: string, password: string): LoginResult => {
-    const found = users.find(
-      (u) => u.email.toLowerCase() === email.trim().toLowerCase()
-    );
-    if (!found || password !== MOCK_PASSWORD) {
-      return { ok: false, error: "Correo o contraseña incorrectos" };
+    async function sync(session: Session | null) {
+      if (!session) {
+        if (active) setUser(null);
+        return;
+      }
+      const appUser = await fetchAppUser(session.user);
+      if (active) setUser(appUser);
     }
-    setStoredUser(found.id);
-    return { ok: true, user: found };
+
+    supabase.auth.getSession().then(async ({ data }) => {
+      await sync(data.session);
+      if (active) setHydrated(true);
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      // Se difiere para no llamar a Supabase dentro del propio callback
+      setTimeout(() => {
+        void sync(session);
+      }, 0);
+    });
+
+    return () => {
+      active = false;
+      listener.subscription.unsubscribe();
+    };
   }, []);
 
-  const loginAs = useCallback((id: string) => {
-    const found = users.find((u) => u.id === id);
-    if (!found) return null;
-    setStoredUser(found.id);
-    return found;
-  }, []);
+  const login = useCallback(
+    async (email: string, password: string): Promise<AuthResult> => {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+      if (error || !data.user) {
+        return { ok: false, error: "Correo o contraseña incorrectos" };
+      }
+      const appUser = await fetchAppUser(data.user);
+      if (!appUser) {
+        return { ok: false, error: "No encontramos el perfil de esta cuenta" };
+      }
+      setUser(appUser);
+      return { ok: true, user: appUser };
+    },
+    []
+  );
 
-  const logout = useCallback(() => setStoredUser(null), []);
+  const loginAs = useCallback(
+    (email: string) => login(email, MOCK_PASSWORD),
+    [login]
+  );
+
+  const register = useCallback(
+    async ({ name, email, password, code }: RegisterInput): Promise<AuthResult> => {
+      const invitation = code?.trim();
+
+      // Si trae código, se revisa antes de crear la cuenta
+      if (invitation) {
+        const { data: role, error } = await supabase.rpc("check_invitation", {
+          p_code: invitation,
+        });
+        if (error || !role) {
+          return {
+            ok: false,
+            error: "El código de invitación no es válido o ya venció.",
+          };
+        }
+      }
+
+      const { data, error } = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+        options: { data: { full_name: name.trim() } },
+      });
+      if (error) return { ok: false, error: friendlyError(error.message) };
+      if (!data.user || !data.session) {
+        return {
+          ok: false,
+          error: "Revisa tu correo para confirmar la cuenta antes de entrar.",
+        };
+      }
+
+      if (invitation) {
+        const { error: redeemError } = await supabase.rpc("redeem_invitation", {
+          p_code: invitation,
+        });
+        if (redeemError) {
+          return {
+            ok: false,
+            error:
+              "Tu cuenta se creó como cliente, pero el código ya no es válido.",
+          };
+        }
+      }
+
+      const appUser = await fetchAppUser(data.user);
+      if (!appUser) {
+        return { ok: false, error: "No pudimos cargar tu perfil." };
+      }
+      setUser(appUser);
+      return { ok: true, user: appUser };
+    },
+    []
+  );
+
+  const logout = useCallback(async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+  }, []);
 
   return (
-    <AuthContext.Provider value={{ user, hydrated, login, loginAs, logout }}>
+    <AuthContext.Provider
+      value={{ user, hydrated, login, loginAs, register, logout }}
+    >
       {children}
     </AuthContext.Provider>
   );
