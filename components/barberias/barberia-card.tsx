@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { MapPin, Star } from "lucide-react";
-import { getBarbersByShop, getMinPrice } from "@/lib/data/queries";
+import type { ShopWithDetails } from "@/lib/data/queries";
 import { formatCOP } from "@/lib/format";
-import type { Barbershop } from "@/lib/types";
 
-export function BarberiaCard({ shop }: { shop: Barbershop }) {
-  const barbers = getBarbersByShop(shop.id);
-  const minPrice = getMinPrice(shop.id);
+export function BarberiaCard({ shop }: { shop: ShopWithDetails }) {
+  const minPrice = shop.services.length
+    ? Math.min(...shop.services.map((s) => s.price))
+    : null;
+  const barberCount = shop.barbers.length;
 
   return (
     <Link href={`/barberias/${shop.slug}`} className="group block">
@@ -40,7 +41,7 @@ export function BarberiaCard({ shop }: { shop: Barbershop }) {
 
           <div className="flex items-center justify-between border-t border-border pt-3 text-sm">
             <span className="text-muted-foreground">
-              {barbers.length} {barbers.length === 1 ? "barbero" : "barberos"}
+              {barberCount} {barberCount === 1 ? "barbero" : "barberos"}
             </span>
             {minPrice !== null && (
               <span className="font-semibold text-gold-light">

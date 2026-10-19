@@ -2,23 +2,21 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Clock, MapPin, Star } from "lucide-react";
 import { BarberiaContenido } from "@/components/barberias/barberia-contenido";
-import { getBarbershopBySlug, getBarbershops } from "@/lib/data/queries";
+import { getShopBySlug } from "@/lib/data/queries";
 
 type Props = { params: Promise<{ slug: string }> };
 
-export function generateStaticParams() {
-  return getBarbershops().map((s) => ({ slug: s.slug }));
-}
+export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: Props) {
   const { slug } = await params;
-  const shop = getBarbershopBySlug(slug);
+  const shop = await getShopBySlug(slug);
   return { title: shop ? `${shop.name} | BarberPro` : "Barbería | BarberPro" };
 }
 
 export default async function BarberiaPage({ params }: Props) {
   const { slug } = await params;
-  const shop = getBarbershopBySlug(slug);
+  const shop = await getShopBySlug(slug);
   if (!shop) notFound();
 
   return (
