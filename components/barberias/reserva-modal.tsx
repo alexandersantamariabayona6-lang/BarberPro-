@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { CheckCircle2, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,11 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { useAuth } from "@/lib/auth/auth-context";
-import { appointments } from "@/lib/data/mock";
+import {
+  createAppointment,
+  getBusySlots,
+  type BusySlot,
+} from "@/lib/data/appointments";
 import {
   getAvailableDays,
   getAvailableSlots,
@@ -48,13 +52,45 @@ export function ReservaModal({ shop, service, barbers }: Props) {
   const [barberId, setBarberId] = useState<string | null>(null);
   const [dateKey, setDateKey] = useState<string | null>(null);
   const [time, setTime] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [refresh, setRefresh] = useState(0);
+  const [busyState, setBusyState] = useState<{
+    key: string;
+    data: BusySlot[];
+    failed: boolean;
+  } | null>(null);
 
   const days = useMemo(() => getAvailableDays(shop), [shop]);
   const barber = barbers.find((b) => b.id === barberId);
   const day = days.find((d) => toDateKey(d) === dateKey);
 
+  // Horarios ocupados del barbero ese día, desde la base de datos
+  const slotsKey = barberId && dateKey ? `${barberId}|${dateKey}|${refresh}` : null;
+
+  useEffect(() => {
+    if (!barberId || !dateKey || !slotsKey) return;
+    let active = true;
+    getBusySlots(barberId, dateKey)
+      .then((data) => {
+        if (active) setBusyState({ key: slotsKey, data, failed: false });
+      })
+      .catch(() => {
+        if (active) setBusyState({ key: slotsKey, data: [], failed: true });
+      });
+    return () => {
+      active = false;
+    };
+  }, [barberId, dateKey, slotsKey]);
+
+  const loadingSlots = !!slotsKey && busyState?.key !== slotsKey;
+  const failedSlots = busyState?.key === slotsKey && busyState.failed;
+  const busy = busyState?.key === slotsKey ? busyState.data : [];
+
   const slots =
-    barber && day ? getAvailableSlots(shop, service, barber.id, day) : [];
+    day && !loadingSlots && !failedSlots
+      ? getAvailableSlots(shop, service, day, busy)
+      : [];
 
   function onOpenChange(value: boolean) {
     setOpen(value);
@@ -63,22 +99,35 @@ export function ReservaModal({ shop, service, barbers }: Props) {
       setBarberId(null);
       setDateKey(null);
       setTime(null);
+      setError("");
+      setBusyState(null);
     }
   }
 
-  function confirmar() {
-    if (!user || !barber || !dateKey || !time) return;
-    appointments.push({
-      id: `a-${Date.now()}`,
-      barbershopId: shop.id,
-      barberId: barber.id,
-      serviceId: service.id,
-      clientId: user.id,
-      date: dateKey,
-      time,
-      status: "pendiente",
-    });
-    setStep("listo");
+  async function confirmar() {
+    if (!barber || !dateKey || !time) return;
+    setSaving(true);
+    setError("");
+    try {
+      await createAppointment({
+        serviceId: service.id,
+        barberId: barber.id,
+        date: dateKey,
+        time,
+      });
+      setStep("listo");
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "No pudimos crear la reserva."
+      );
+      // Se recarga la disponibilidad y se vuelve a elegir horario
+      setTime(null);
+      setBusyState(null);
+      setRefresh((r) => r + 1);
+      setStep("horario");
+    } finally {
+      setSaving(false);
+    }
   }
 
   const weekday = new Intl.DateTimeFormat("es-CO", { weekday: "short" });
@@ -130,10 +179,24 @@ export function ReservaModal({ shop, service, barbers }: Props) {
               </p>
             )}
 
+            {error && (
+              <p
+                role="alert"
+                className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+              >
+                {error}
+              </p>
+            )}
+
             {/* Paso 1: barbero */}
             {step === "barbero" && (
               <div className="space-y-3">
                 <h3 className="text-base text-foreground">Elige tu barbero</h3>
+                {barbers.length === 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    Esta barbería aún no tiene barberos disponibles.
+                  </p>
+                )}
                 {barbers.map((b) => (
                   <button
                     key={b.id}
@@ -142,6 +205,7 @@ export function ReservaModal({ shop, service, barbers }: Props) {
                       setBarberId(b.id);
                       setDateKey(null);
                       setTime(null);
+                      setError("");
                       setStep("horario");
                     }}
                     className="flex w-full items-center gap-3 rounded-lg border border-border px-4 py-3 text-left transition-colors hover:border-gold/50 hover:bg-accent"
@@ -181,6 +245,7 @@ export function ReservaModal({ shop, service, barbers }: Props) {
                           onClick={() => {
                             setDateKey(key);
                             setTime(null);
+                            setError("");
                           }}
                           className={`${chipBase} text-center ${
                             dateKey === key ? chipOn : chipOff
@@ -201,7 +266,15 @@ export function ReservaModal({ shop, service, barbers }: Props) {
                 {day && (
                   <div className="space-y-3">
                     <h3 className="text-base text-foreground">Elige la hora</h3>
-                    {slots.length === 0 ? (
+                    {loadingSlots ? (
+                      <p className="text-sm text-muted-foreground">
+                        Buscando horarios disponibles…
+                      </p>
+                    ) : failedSlots ? (
+                      <p className="text-sm text-destructive">
+                        No pudimos cargar los horarios. Inténtalo de nuevo.
+                      </p>
+                    ) : slots.length === 0 ? (
                       <p className="text-sm text-muted-foreground">
                         No hay horarios disponibles este día. Prueba con otro.
                       </p>
@@ -230,7 +303,10 @@ export function ReservaModal({ shop, service, barbers }: Props) {
                   </Button>
                   <Button
                     disabled={!time}
-                    onClick={() => setStep("confirmar")}
+                    onClick={() => {
+                      setError("");
+                      setStep("confirmar");
+                    }}
                     className="bg-gold-gradient font-semibold text-primary-foreground hover:opacity-90"
                   >
                     Continuar
@@ -268,9 +344,10 @@ export function ReservaModal({ shop, service, barbers }: Props) {
                   </Button>
                   <Button
                     onClick={confirmar}
+                    disabled={saving}
                     className="bg-gold-gradient font-semibold text-primary-foreground hover:opacity-90"
                   >
-                    Confirmar reserva
+                    {saving ? "Reservando…" : "Confirmar reserva"}
                   </Button>
                 </div>
               </div>

@@ -1,4 +1,4 @@
-import { appointments, services } from "@/lib/data/mock";
+import type { BusySlot } from "@/lib/data/appointments";
 import type { Barbershop, ShopService } from "@/lib/types";
 
 const STEP_MIN = 30;
@@ -47,8 +47,8 @@ export function getAvailableDays(shop: Barbershop, count = 7) {
 export function getAvailableSlots(
   shop: Barbershop,
   service: ShopService,
-  barberId: string,
-  date: Date
+  date: Date,
+  busy: BusySlot[]
 ) {
   const { open, close } = parseHours(shop.openHours);
   const key = toDateKey(date);
@@ -56,21 +56,16 @@ export function getAvailableSlots(
   const isToday = key === toDateKey(now);
   const nowMin = now.getHours() * 60 + now.getMinutes();
 
-  // Franjas ya ocupadas por ese barbero ese día
-  const busy = appointments
-    .filter((a) => a.barberId === barberId && a.date === key)
-    .map((a) => {
-      const duration =
-        services.find((s) => s.id === a.serviceId)?.duration ?? STEP_MIN;
-      const start = toMinutes(a.time);
-      return { start, end: start + duration };
-    });
+  const busyRanges = busy.map((b) => {
+    const start = toMinutes(b.time);
+    return { start, end: start + b.duration };
+  });
 
   const slots: string[] = [];
   for (let start = open; start + service.duration <= close; start += STEP_MIN) {
     if (isToday && start <= nowMin) continue;
     const end = start + service.duration;
-    const overlaps = busy.some((b) => start < b.end && end > b.start);
+    const overlaps = busyRanges.some((b) => start < b.end && end > b.start);
     if (!overlaps) slots.push(toTime(start));
   }
   return slots;
