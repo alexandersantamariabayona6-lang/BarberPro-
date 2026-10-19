@@ -9,8 +9,10 @@ import { toDateKey } from "@/lib/booking";
 function BarberContent() {
   const { user } = useAuth();
   const me = barbers.find((b) => b.userId === user?.id);
-  const mine = appointments.filter((a) => a.barberId === me?.id);
-
+  const todayKey = toDateKey(new Date());
+  const mine = appointments
+    .filter((a) => a.barberId === me?.id && a.date >= todayKey)
+    .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
   return (
     <DashboardShell
       title="Mi agenda"
