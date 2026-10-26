@@ -9,11 +9,10 @@ import {
   type ReactNode,
 } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { users as mockUsers } from "@/lib/data/mock";
 import { supabase } from "@/lib/supabase/client";
 import type { Role, User } from "@/lib/types";
 
-// Contraseña de las cuentas de prueba (@demo.com)
+// Contraseña de las cuentas de demostración (@demo.com)
 export const MOCK_PASSWORD = "demo123";
 
 // A dónde va cada rol después de iniciar sesión
@@ -45,9 +44,7 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-// Convierte el usuario de Supabase en el usuario que entiende la app.
-// PUENTE (se elimina al final de la Fase 3): las cuentas de prueba conservan
-// nombre y barbershopId del mock para las pestañas que aún no migramos.
+// Convierte el usuario de Supabase en el usuario que entiende la app
 async function fetchAppUser(authUser: {
   id: string;
   email?: string | null;
@@ -60,20 +57,12 @@ async function fetchAppUser(authUser: {
 
   if (error || !profile) return null;
 
-  const email = authUser.email ?? "";
   const shopId: string | undefined = profile.barbershop_id ?? undefined;
-  const mock = mockUsers.find(
-    (u) => u.email.toLowerCase() === email.toLowerCase()
-  );
-
-  if (mock) {
-    return { ...mock, id: authUser.id, role: profile.role as Role, shopId };
-  }
 
   return {
     id: authUser.id,
     name: profile.full_name,
-    email,
+    email: authUser.email ?? "",
     role: profile.role as Role,
     barbershopId: shopId,
     shopId,

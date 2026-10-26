@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -16,11 +16,12 @@ import {
 import RoleGuard from "@/components/auth/role-guard";
 import AdminNav from "@/components/admin/admin-nav";
 import DashboardShell from "@/components/layout/dashboard-shell";
-import { useAuth } from "@/lib/auth/auth-context";
 import { toDateKey } from "@/lib/booking";
-import { appointments, barbers, services } from "@/lib/data/mock";
+import {
+  getShopAppointments,
+  type AppointmentView,
+} from "@/lib/data/appointments";
 import { formatCOP } from "@/lib/format";
-import type { Appointment } from "@/lib/types";
 
 type Range = 7 | 14 | 30;
 type Slice = { name: string; value: number };
@@ -44,7 +45,7 @@ const dayLabel = new Intl.DateTimeFormat("es-CO", {
   month: "short",
 });
 
-function startsAt(a: Appointment) {
+function startsAt(a: AppointmentView) {
   const [y, m, d] = a.date.split("-").map(Number);
   const [h, min] = a.time.split(":").map(Number);
   return new Date(y, m - 1, d, h, min);
@@ -157,45 +158,51 @@ function PieCard({
 }
 
 function AnalyticsContent() {
-  const { user } = useAuth();
-  const shopId = user?.barbershopId;
+  const [items, setItems] = useState<AppointmentView[] | null>(null);
+  const [error, setError] = useState("");
   const [range, setRange] = useState<Range>(14);
+
+  useEffect(() => {
+    let active = true;
+    getShopAppointments()
+      .then((data) => {
+        if (active) setItems(data);
+      })
+      .catch((e: Error) => {
+        if (active) setError(e.message);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const stats = useMemo(() => {
     const now = new Date();
     const todayKey = toDateKey(now);
 
     // Realizadas = confirmadas cuya hora ya pasó
-    const done = appointments
-      .filter(
-        (a) =>
-          a.barbershopId === shopId &&
-          a.status === "confirmada" &&
-          startsAt(a) <= now
-      )
-      .map((a) => ({
-        ...a,
-        price: services.find((s) => s.id === a.serviceId)?.price ?? 0,
-        serviceName:
-          services.find((s) => s.id === a.serviceId)?.name ?? "Otro",
-        barberName: barbers.find((b) => b.id === a.barberId)?.name ?? "Otro",
-      }));
+    const done = (items ?? []).filter(
+      (a) => a.status === "confirmada" && startsAt(a) <= now
+    );
 
     const days: { key: string; label: string }[] = [];
     for (let i = range - 1; i >= 0; i--) {
       const d = new Date(now);
       d.setHours(0, 0, 0, 0);
       d.setDate(d.getDate() - i);
-      days.push({ key: toDateKey(d), label: dayLabel.format(d).replace(".", "") });
+      days.push({
+        key: toDateKey(d),
+        label: dayLabel.format(d).replace(".", ""),
+      });
     }
 
     const inRange = done.filter((a) => a.date >= days[0].key);
     const daily = days.map((d) => {
-      const items = inRange.filter((a) => a.date === d.key);
+      const dayItems = inRange.filter((a) => a.date === d.key);
       return {
         dia: d.label,
-        ganancias: items.reduce((sum, a) => sum + a.price, 0),
-        cortes: items.length,
+        ganancias: dayItems.reduce((sum, a) => sum + a.price, 0),
+        cortes: dayItems.length,
       };
     });
 
@@ -214,9 +221,9 @@ function AnalyticsContent() {
       daily,
       bestDay: bestDay && bestDay.ganancias > 0 ? bestDay : null,
       byService: sumBy(inRange, (a) => a.serviceName, () => 1),
-      byBarber: sumBy(inRange, (a) => a.barberName, (a) => a.price),
+      byBarber: sumBy(inRange, (a) => a.barberName || "Otro", (a) => a.price),
     };
-  }, [range, shopId]);
+  }, [items, range]);
 
   return (
     <DashboardShell
@@ -224,6 +231,12 @@ function AnalyticsContent() {
       subtitle="Ganancias, servicios y rendimiento de tu barbería."
     >
       <AdminNav />
+
+      {error && (
+        <p role="alert" className="mb-4 text-sm text-destructive">
+          {error}
+        </p>
+      )}
 
       <div className="mb-6 flex flex-wrap gap-2">
         {([7, 14, 30] as Range[]).map((r) => (
@@ -238,7 +251,9 @@ function AnalyticsContent() {
         ))}
       </div>
 
-      {stats.count === 0 ? (
+      {items === null && !error ? (
+        <p className="text-muted-foreground">Cargando analítica…</p>
+      ) : stats.count === 0 ? (
         <p className="rounded-xl border border-dashed border-border p-8 text-center text-muted-foreground">
           Todavía no hay servicios realizados en este período.
         </p>
@@ -246,7 +261,10 @@ function AnalyticsContent() {
         <div className="space-y-6">
           {/* Indicadores */}
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-            <KpiCard label="Ganancias de hoy" value={formatCOP(stats.todayRevenue)} />
+            <KpiCard
+              label="Ganancias de hoy"
+              value={formatCOP(stats.todayRevenue)}
+            />
             <KpiCard
               label={`Ganancias (${range} días)`}
               value={formatCOP(stats.revenue)}
