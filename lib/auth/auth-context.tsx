@@ -40,13 +40,14 @@ type AuthContextValue = {
   loginAs: (email: string) => Promise<AuthResult>;
   register: (input: RegisterInput) => Promise<AuthResult>;
   logout: () => Promise<void>;
+  refreshUser: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 // Convierte el usuario de Supabase en el usuario que entiende la app.
-// PUENTE (se elimina en la Fase 3): las cuentas de prueba conservan los ids
-// del mock para que las vistas actuales sigan funcionando.
+// PUENTE (se elimina al final de la Fase 3): las cuentas de prueba conservan
+// nombre y barbershopId del mock para las pestañas que aún no migramos.
 async function fetchAppUser(authUser: {
   id: string;
   email?: string | null;
@@ -60,17 +61,22 @@ async function fetchAppUser(authUser: {
   if (error || !profile) return null;
 
   const email = authUser.email ?? "";
+  const shopId: string | undefined = profile.barbershop_id ?? undefined;
   const mock = mockUsers.find(
     (u) => u.email.toLowerCase() === email.toLowerCase()
   );
-  if (mock) return { ...mock, id: authUser.id, role: profile.role as Role };
+
+  if (mock) {
+    return { ...mock, id: authUser.id, role: profile.role as Role, shopId };
+  }
 
   return {
     id: authUser.id,
     name: profile.full_name,
     email,
     role: profile.role as Role,
-    barbershopId: profile.barbershop_id ?? undefined,
+    barbershopId: shopId,
+    shopId,
   };
 }
 
@@ -105,12 +111,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (active) setHydrated(true);
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      // Se difiere para no llamar a Supabase dentro del propio callback
-      setTimeout(() => {
-        void sync(session);
-      }, 0);
-    });
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        // Se difiere para no llamar a Supabase dentro del propio callback
+        setTimeout(() => {
+          void sync(session);
+        }, 0);
+      }
+    );
 
     return () => {
       active = false;
@@ -143,7 +151,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const register = useCallback(
-    async ({ name, email, password, code }: RegisterInput): Promise<AuthResult> => {
+    async ({
+      name,
+      email,
+      password,
+      code,
+    }: RegisterInput): Promise<AuthResult> => {
       const invitation = code?.trim();
 
       // Si trae código, se revisa antes de crear la cuenta
@@ -173,9 +186,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (invitation) {
-        const { error: redeemError } = await supabase.rpc("redeem_invitation", {
-          p_code: invitation,
-        });
+        const { error: redeemError } = await supabase.rpc(
+          "redeem_invitation",
+          { p_code: invitation }
+        );
         if (redeemError) {
           return {
             ok: false,
@@ -200,9 +214,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
+  // Vuelve a leer el perfil (por ejemplo, después de crear la barbería)
+  const refreshUser = useCallback(async () => {
+    const { data } = await supabase.auth.getSession();
+    if (!data.session) {
+      setUser(null);
+      return;
+    }
+    setUser(await fetchAppUser(data.session.user));
+  }, []);
+
   return (
     <AuthContext.Provider
-      value={{ user, hydrated, login, loginAs, register, logout }}
+      value={{ user, hydrated, login, loginAs, register, logout, refreshUser }}
     >
       {children}
     </AuthContext.Provider>
