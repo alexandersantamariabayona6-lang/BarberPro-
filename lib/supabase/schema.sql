@@ -483,3 +483,85 @@ $$;
 
 revoke execute on function public.create_barbershop(text, text, text, text, text) from public, anon;
 grant execute on function public.create_barbershop(text, text, text, text, text) to authenticated;
+
+-- ============ Fase 3.4: barberos y citas del admin ============
+
+-- El admin ve las invitaciones de barbero de su barbería
+grant select on public.invitations to authenticated;
+
+create policy "Admin ve las invitaciones de su barbería"
+  on public.invitations for select to authenticated
+  using (
+    public.my_role() = 'admin'
+    and role = 'barbero'
+    and barbershop_id = public.my_barbershop()
+  );
+
+-- El admin edita nombre y especialidad de los barberos de su barbería
+grant update (name, specialty) on public.barbers to authenticated;
+
+create policy "Admin edita barberos de su barbería"
+  on public.barbers for update to authenticated
+  using (public.my_role() = 'admin' and barbershop_id = public.my_barbershop())
+  with check (public.my_role() = 'admin' and barbershop_id = public.my_barbershop());
+
+-- Quitar un barbero (solo si no tiene citas); su cuenta vuelve a ser de cliente
+create or replace function public.remove_barber(p_barber uuid)
+returns void
+language plpgsql security definer
+set search_path = ''
+as $$
+declare
+  v_b public.barbers%rowtype;
+begin
+  if public.my_role() <> 'admin' then
+    raise exception 'No tienes permiso para hacer esto';
+  end if;
+
+  select * into v_b from public.barbers where id = p_barber;
+  if not found or v_b.barbershop_id is distinct from public.my_barbershop() then
+    raise exception 'Barbero no encontrado';
+  end if;
+
+  if exists (select 1 from public.appointments where barber_id = p_barber) then
+    raise exception 'No puedes quitar a este barbero porque tiene citas asociadas';
+  end if;
+
+  delete from public.barbers where id = p_barber;
+  update public.profiles
+  set role = 'cliente', barbershop_id = null
+  where id = v_b.profile_id;
+end;
+$$;
+
+-- Confirmar una cita pendiente de la barbería del admin
+create or replace function public.confirm_appointment(p_id uuid)
+returns void
+language plpgsql security definer
+set search_path = ''
+as $$
+declare
+  v_a public.appointments%rowtype;
+begin
+  select * into v_a from public.appointments where id = p_id;
+  if not found then
+    raise exception 'Cita no encontrada';
+  end if;
+
+  if public.my_role() <> 'admin'
+     or v_a.barbershop_id is distinct from public.my_barbershop() then
+    raise exception 'No puedes confirmar esta cita';
+  end if;
+
+  if v_a.status <> 'pendiente' then
+    raise exception 'Solo se pueden confirmar citas pendientes';
+  end if;
+
+  update public.appointments set status = 'confirmada' where id = p_id;
+end;
+$$;
+
+revoke execute on function public.remove_barber(uuid) from public, anon;
+revoke execute on function public.confirm_appointment(uuid) from public, anon;
+grant execute on function public.remove_barber(uuid) to authenticated;
+grant execute on function public.confirm_appointment(uuid) to authenticated;

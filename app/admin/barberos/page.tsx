@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
-import { Pencil, Plus, Star, Trash2 } from "lucide-react";
+import { useEffect, useState, type FormEvent } from "react";
+import { Copy, KeyRound, Pencil, Star, Trash2, UserPlus } from "lucide-react";
 import RoleGuard from "@/components/auth/role-guard";
 import AdminNav from "@/components/admin/admin-nav";
 import DashboardShell from "@/components/layout/dashboard-shell";
@@ -16,138 +16,142 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/lib/auth/auth-context";
-import { appointments, barbers, users } from "@/lib/data/mock";
+import {
+  createBarberInvitation,
+  getPendingBarberInvitations,
+  getShopBarbers,
+  removeBarber,
+  updateBarber,
+  type PendingInvitation,
+} from "@/lib/data/admin";
 import type { ShopBarber } from "@/lib/types";
 
-
-type FormState = {
-  name: string;
-  email: string;
-  specialty: string;
-};
-
-const emptyForm: FormState = { name: "", email: "", specialty: "" };
+const dateFormat = new Intl.DateTimeFormat("es-CO", {
+  day: "numeric",
+  month: "long",
+});
 
 function BarbersContent() {
   const { user } = useAuth();
-  const shopId = user?.barbershopId;
+  const shopId = user?.shopId;
 
-  const [, setVersion] = useState(0);
+  const [barbers, setBarbers] = useState<ShopBarber[] | null>(null);
+  const [invites, setInvites] = useState<PendingInvitation[]>([]);
+  const [refresh, setRefresh] = useState(0);
+  const [notice, setNotice] = useState("");
+  const [newCode, setNewCode] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
+
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<ShopBarber | null>(null);
-  const [form, setForm] = useState<FormState>(emptyForm);
+  const [form, setForm] = useState({ name: "", specialty: "" });
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
 
-  const list = barbers.filter((b) => b.barbershopId === shopId);
-  const refresh = () => setVersion((v) => v + 1);
+  useEffect(() => {
+    if (!shopId) return;
+    let active = true;
+    Promise.all([getShopBarbers(shopId), getPendingBarberInvitations()])
+      .then(([b, i]) => {
+        if (!active) return;
+        setBarbers(b);
+        setInvites(i);
+      })
+      .catch((e: Error) => {
+        if (active) setNotice(e.message);
+      });
+    return () => {
+      active = false;
+    };
+  }, [shopId, refresh]);
 
-  function openNew() {
-    setEditing(null);
-    setForm(emptyForm);
-    setError("");
-    setDialogOpen(true);
+  async function generateCode() {
+    setGenerating(true);
+    setNotice("");
+    try {
+      const code = await createBarberInvitation();
+      setNewCode(code);
+      setCopied(null);
+      setRefresh((r) => r + 1);
+    } catch (e) {
+      setNotice(
+        e instanceof Error ? e.message : "No pudimos generar el código."
+      );
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  async function copy(code: string) {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(code);
+    } catch {}
   }
 
   function openEdit(barber: ShopBarber) {
-    const account = users.find((u) => u.id === barber.userId);
     setEditing(barber);
-    setForm({
-      name: barber.name,
-      email: account?.email ?? "",
-      specialty: barber.specialty,
-    });
+    setForm({ name: barber.name, specialty: barber.specialty });
     setError("");
     setDialogOpen(true);
   }
 
-  function onSubmit(e: FormEvent) {
+  async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    const name = form.name.trim();
-    const specialty = form.specialty.trim();
-    const email = form.email.trim().toLowerCase();
-
-    if (!name) {
-      setError("El nombre es obligatorio.");
+    if (!editing) return;
+    if (!form.name.trim() || !form.specialty.trim()) {
+      setError("El nombre y la especialidad son obligatorios.");
       return;
     }
-    if (!specialty) {
-      setError("Cuéntanos en qué se especializa.");
-      return;
-    }
-    if (!shopId) return;
-
-    if (editing) {
-      Object.assign(editing, { name, specialty });
-      const account = users.find((u) => u.id === editing.userId);
-      if (account) account.name = name;
-    } else {
-      if (!email.includes("@")) {
-        setError("Pon un correo válido.");
-        return;
-      }
-      if (users.some((u) => u.email.toLowerCase() === email)) {
-        setError("Ya existe una cuenta con ese correo.");
-        return;
-      }
-      const stamp = Date.now();
-      users.push({
-        id: `u-barbero-${stamp}`,
-        name,
-        email,
-        role: "barbero",
-        barbershopId: shopId,
+    setSaving(true);
+    try {
+      await updateBarber(editing.id, {
+        name: form.name.trim(),
+        specialty: form.specialty.trim(),
       });
-      barbers.push({
-        id: `b-${stamp}`,
-        userId: `u-barbero-${stamp}`,
-        barbershopId: shopId,
-        name,
-        specialty,
-        rating: 5,
-      });
+      setDialogOpen(false);
+      setRefresh((r) => r + 1);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "No pudimos guardar los cambios."
+      );
+    } finally {
+      setSaving(false);
     }
-
-    setNotice("");
-    setDialogOpen(false);
-    refresh();
   }
 
-  function remove(barber: ShopBarber) {
-    if (appointments.some((a) => a.barberId === barber.id)) {
-      setNotice(
-        `No puedes eliminar a ${barber.name} porque tiene citas asociadas.`
-      );
-      return;
-    }
+  async function remove(barber: ShopBarber) {
     if (!window.confirm(`¿Quitar a ${barber.name} del equipo?`)) return;
-
-    const barberIndex = barbers.findIndex((b) => b.id === barber.id);
-    if (barberIndex !== -1) barbers.splice(barberIndex, 1);
-    const userIndex = users.findIndex((u) => u.id === barber.userId);
-    if (userIndex !== -1) users.splice(userIndex, 1);
-
-    setNotice("");
-    refresh();
+    try {
+      await removeBarber(barber.id);
+      setNotice("");
+      setRefresh((r) => r + 1);
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : "No pudimos quitar al barbero.");
+    }
   }
 
   return (
     <DashboardShell
       title="Barberos"
-      subtitle="Administra el equipo de tu barbería."
+      subtitle="Invita a tu equipo y administra a tus barberos."
     >
       <AdminNav />
 
       <div className="mb-5 flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
-          {list.length} {list.length === 1 ? "barbero" : "barberos"}
+          {barbers === null
+            ? "Cargando…"
+            : `${barbers.length} ${barbers.length === 1 ? "barbero" : "barberos"}`}
         </p>
         <Button
-          onClick={openNew}
+          onClick={generateCode}
+          disabled={generating}
           className="bg-gold-gradient font-semibold text-primary-foreground hover:opacity-90"
         >
-          <Plus className="mr-1 size-4" />
-          Agregar barbero
+          <UserPlus className="mr-1 size-4" />
+          {generating ? "Generando..." : "Invitar barbero"}
         </Button>
       </div>
 
@@ -160,60 +164,97 @@ function BarbersContent() {
         </p>
       )}
 
-      {list.length === 0 ? (
+      {newCode && (
+        <div className="mb-6 rounded-xl border border-gold/40 bg-gold/5 p-5">
+          <h2 className="flex items-center gap-2 text-lg">
+            <KeyRound className="size-5 text-gold" />
+            Código de invitación
+          </h2>
+          <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3">
+            <span className="font-mono text-xl tracking-widest text-gold-light">
+              {newCode}
+            </span>
+            <Button variant="outline" size="sm" onClick={() => copy(newCode)}>
+              <Copy className="mr-1 size-4" />
+              {copied === newCode ? "Copiado" : "Copiar"}
+            </Button>
+          </div>
+          <p className="mt-3 text-sm text-muted-foreground">
+            Pásale este código a tu barbero. Debe crear su cuenta en la página
+            de registro e ingresarlo ahí. Sirve una sola vez y vence en 7 días.
+          </p>
+        </div>
+      )}
+
+      {invites.length > 0 && (
+        <section className="mb-8">
+          <h2 className="text-lg">Invitaciones pendientes</h2>
+          <ul className="mt-3 space-y-2">
+            {invites.map((i) => (
+              <li
+                key={i.code}
+                className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3 text-sm"
+              >
+                <span className="font-mono tracking-widest text-gold-light">
+                  {i.code}
+                </span>
+                <span className="text-muted-foreground">
+                  Vence el {dateFormat.format(new Date(i.expiresAt))}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {barbers !== null && barbers.length === 0 ? (
         <p className="rounded-xl border border-dashed border-border p-8 text-center text-muted-foreground">
-          Aún no tienes barberos. Agrega el primero.
+          Aún no tienes barberos. Genera un código e invita al primero.
         </p>
       ) : (
         <ul className="space-y-3">
-          {list.map((b) => {
-            const account = users.find((u) => u.id === b.userId);
-            return (
-              <li
-                key={b.id}
-                className="flex flex-col gap-4 rounded-xl border border-border bg-card p-5 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div className="flex min-w-0 items-center gap-4">
-                  <span className="flex size-12 shrink-0 items-center justify-center rounded-full border border-gold/30 font-heading text-lg text-gold">
-                    {b.name.charAt(0)}
-                  </span>
-                  <div className="min-w-0">
-                    <h3 className="truncate text-foreground">{b.name}</h3>
-                    <p className="truncate text-sm text-muted-foreground">
-                      {b.specialty}
-                    </p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {account?.email}
-                    </p>
-                  </div>
+          {(barbers ?? []).map((b) => (
+            <li
+              key={b.id}
+              className="flex flex-col gap-4 rounded-xl border border-border bg-card p-5 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div className="flex min-w-0 items-center gap-4">
+                <span className="flex size-12 shrink-0 items-center justify-center rounded-full border border-gold/30 font-heading text-lg text-gold">
+                  {b.name.charAt(0)}
+                </span>
+                <div className="min-w-0">
+                  <h3 className="truncate text-foreground">{b.name}</h3>
+                  <p className="truncate text-sm text-muted-foreground">
+                    {b.specialty}
+                  </p>
                 </div>
-                <div className="flex items-center justify-between gap-3 sm:justify-end">
-                  <span className="flex items-center gap-1 text-sm text-gold-light">
-                    <Star className="size-3.5 fill-gold text-gold" />
-                    {b.rating}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    aria-label={`Editar a ${b.name}`}
-                    onClick={() => openEdit(b)}
-                    className="border-gold/40 text-gold-light hover:bg-accent hover:text-gold-light"
-                  >
-                    <Pencil className="size-4" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    aria-label={`Quitar a ${b.name}`}
-                    onClick={() => remove(b)}
-                    className="border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
-                </div>
-              </li>
-            );
-          })}
+              </div>
+              <div className="flex items-center justify-between gap-3 sm:justify-end">
+                <span className="flex items-center gap-1 text-sm text-gold-light">
+                  <Star className="size-3.5 fill-gold text-gold" />
+                  {b.rating}
+                </span>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  aria-label={`Editar a ${b.name}`}
+                  onClick={() => openEdit(b)}
+                  className="border-gold/40 text-gold-light hover:bg-accent hover:text-gold-light"
+                >
+                  <Pencil className="size-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  aria-label={`Quitar a ${b.name}`}
+                  onClick={() => remove(b)}
+                  className="border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                >
+                  <Trash2 className="size-4" />
+                </Button>
+              </div>
+            </li>
+          ))}
         </ul>
       )}
 
@@ -221,12 +262,10 @@ function BarbersContent() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="font-heading text-xl">
-              {editing ? "Editar barbero" : "Nuevo barbero"}
+              Editar barbero
             </DialogTitle>
             <DialogDescription>
-              {editing
-                ? "El correo de la cuenta no se puede cambiar."
-                : "Se crea una cuenta de prueba con la contraseña demo123."}
+              Esto es lo que verán los clientes al reservar.
             </DialogDescription>
           </DialogHeader>
 
@@ -237,18 +276,6 @@ function BarbersContent() {
                 id="barber-name"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="Ej: Daniel Torres"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="barber-email">Correo</Label>
-              <Input
-                id="barber-email"
-                type="email"
-                value={form.email}
-                disabled={!!editing}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
-                placeholder="daniel@demo.com"
               />
             </div>
             <div className="space-y-2">
@@ -279,9 +306,10 @@ function BarbersContent() {
               </Button>
               <Button
                 type="submit"
+                disabled={saving}
                 className="bg-gold-gradient font-semibold text-primary-foreground hover:opacity-90"
               >
-                {editing ? "Guardar cambios" : "Agregar barbero"}
+                {saving ? "Guardando..." : "Guardar cambios"}
               </Button>
             </div>
           </form>

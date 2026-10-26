@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase/client";
-import type { ShopService } from "@/lib/types";
+import type { ShopBarber, ShopService } from "@/lib/types";
+
 
 type ServiceRow = {
   id: string;
@@ -112,4 +113,75 @@ export async function createBarbershop(input: {
   });
   if (error) throw new Error(error.message);
   return data as string;
+}
+
+// ---------- Barberos e invitaciones ----------
+
+type BarberRow = {
+  id: string;
+  profile_id: string;
+  barbershop_id: string;
+  name: string;
+  specialty: string;
+  rating: number;
+};
+
+export async function getShopBarbers(shopId: string): Promise<ShopBarber[]> {
+  const { data, error } = await supabase
+    .from("barbers")
+    .select("id, profile_id, barbershop_id, name, specialty, rating")
+    .eq("barbershop_id", shopId)
+    .order("created_at");
+  if (error) throw new Error(error.message);
+  return (data as BarberRow[]).map((b) => ({
+    id: b.id,
+    userId: b.profile_id,
+    barbershopId: b.barbershop_id,
+    name: b.name,
+    specialty: b.specialty,
+    rating: Number(b.rating),
+  }));
+}
+
+export async function updateBarber(
+  id: string,
+  input: { name: string; specialty: string }
+): Promise<void> {
+  const { error } = await supabase
+    .from("barbers")
+    .update({ name: input.name, specialty: input.specialty })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+export async function removeBarber(id: string): Promise<void> {
+  const { error } = await supabase.rpc("remove_barber", { p_barber: id });
+  if (error) throw new Error(error.message);
+}
+
+export type PendingInvitation = { code: string; expiresAt: string };
+
+export async function createBarberInvitation(): Promise<string> {
+  const { data, error } = await supabase.rpc("create_invitation", {
+    p_role: "barbero",
+  });
+  if (error) throw new Error(error.message);
+  return data as string;
+}
+
+export async function getPendingBarberInvitations(): Promise<
+  PendingInvitation[]
+> {
+  const { data, error } = await supabase
+    .from("invitations")
+    .select("code, expires_at")
+    .eq("role", "barbero")
+    .is("used_at", null)
+    .gt("expires_at", new Date().toISOString())
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data as { code: string; expires_at: string }[]).map((i) => ({
+    code: i.code,
+    expiresAt: i.expires_at,
+  }));
 }
