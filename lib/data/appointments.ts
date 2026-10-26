@@ -4,6 +4,7 @@ export type AppointmentStatus = "pendiente" | "confirmada" | "cancelada";
 
 export type AppointmentView = {
   id: string;
+  barberId: string;
   date: string; // YYYY-MM-DD
   time: string; // HH:MM
   status: AppointmentStatus;
@@ -20,6 +21,7 @@ export type BusySlot = { time: string; duration: number };
 
 type Row = {
   id: string;
+  barber_id: string;
   appt_date: string;
   appt_time: string;
   status: AppointmentStatus;
@@ -30,7 +32,7 @@ type Row = {
 };
 
 const APPOINTMENT_SELECT = `
-  id, appt_date, appt_time, status,
+  id, barber_id, appt_date, appt_time, status,
   services (name, price, duration_min),
   barbers (name),
   barbershops (name, address),
@@ -40,6 +42,7 @@ const APPOINTMENT_SELECT = `
 function toView(row: Row): AppointmentView {
   return {
     id: row.id,
+    barberId: row.barber_id,
     date: row.appt_date,
     time: row.appt_time.slice(0, 5),
     status: row.status,
@@ -88,6 +91,11 @@ export async function cancelAppointment(id: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+export async function confirmAppointment(id: string): Promise<void> {
+  const { error } = await supabase.rpc("confirm_appointment", { p_id: id });
+  if (error) throw new Error(error.message);
+}
+
 // Citas del cliente que inició sesión (la base de datos solo le entrega las suyas)
 export async function getMyAppointments(): Promise<AppointmentView[]> {
   const { data, error } = await supabase
@@ -110,6 +118,17 @@ export async function getBarberAgenda(
     .neq("status", "cancelada")
     .order("appt_date", { ascending: true })
     .order("appt_time", { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data as unknown as Row[]).map(toView);
+}
+
+// Todas las citas de la barbería del admin (la base de datos filtra por su barbería)
+export async function getShopAppointments(): Promise<AppointmentView[]> {
+  const { data, error } = await supabase
+    .from("appointments")
+    .select(APPOINTMENT_SELECT)
+    .order("appt_date", { ascending: false })
+    .order("appt_time", { ascending: false });
   if (error) throw new Error(error.message);
   return (data as unknown as Row[]).map(toView);
 }
