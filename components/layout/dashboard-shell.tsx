@@ -1,11 +1,11 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { LogOut, Scissors } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth/auth-context";
-import { barbershops } from "@/lib/data/mock";
+import { supabase } from "@/lib/supabase/client";
 
 export default function DashboardShell({
   title,
@@ -17,7 +17,26 @@ export default function DashboardShell({
   children: ReactNode;
 }) {
   const { user, logout } = useAuth();
-  const shop = barbershops.find((b) => b.id === user?.barbershopId);
+  const shopId = user?.shopId;
+  const [shop, setShop] = useState<{ id: string; name: string } | null>(null);
+
+  useEffect(() => {
+    if (!shopId) return;
+    let active = true;
+    supabase
+      .from("barbershops")
+      .select("id, name")
+      .eq("id", shopId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (active && data) setShop({ id: data.id, name: data.name });
+      });
+    return () => {
+      active = false;
+    };
+  }, [shopId]);
+
+  const shopName = shop && shop.id === shopId ? shop.name : "";
 
   return (
     <div className="min-h-screen">
@@ -32,7 +51,7 @@ export default function DashboardShell({
           <div className="flex items-center gap-3">
             <div className="hidden text-right text-sm sm:block">
               <p className="text-foreground">{user?.name}</p>
-              <p className="text-xs text-muted-foreground">{shop?.name}</p>
+              <p className="text-xs text-muted-foreground">{shopName}</p>
             </div>
             <Button
               variant="outline"
