@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import RoleGuard from "@/components/auth/role-guard";
 import AdminNav from "@/components/admin/admin-nav";
@@ -16,7 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/lib/auth/auth-context";
-import { appointments, services } from "@/lib/data/mock";
+import { deleteService, getAdminServices, saveService } from "@/lib/data/admin";
 import { formatCOP } from "@/lib/format";
 import type { ShopService } from "@/lib/types";
 
@@ -36,17 +36,31 @@ const emptyForm: FormState = {
 
 function ServicesContent() {
   const { user } = useAuth();
-  const shopId = user?.barbershopId;
+  const shopId = user?.shopId;
 
-  const [, setVersion] = useState(0);
+  const [list, setList] = useState<ShopService[] | null>(null);
+  const [refresh, setRefresh] = useState(0);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<ShopService | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
-  const list = services.filter((s) => s.barbershopId === shopId);
-  const refresh = () => setVersion((v) => v + 1);
+  useEffect(() => {
+    if (!shopId) return;
+    let active = true;
+    getAdminServices(shopId)
+      .then((data) => {
+        if (active) setList(data);
+      })
+      .catch((e: Error) => {
+        if (active) setNotice(e.message);
+      });
+    return () => {
+      active = false;
+    };
+  }, [shopId, refresh]);
 
   function openNew() {
     setEditing(null);
@@ -67,7 +81,7 @@ function ServicesContent() {
     setDialogOpen(true);
   }
 
-  function onSubmit(e: FormEvent) {
+  async function onSubmit(e: FormEvent) {
     e.preventDefault();
     const price = Number(form.price);
     const duration = Number(form.duration);
@@ -86,36 +100,41 @@ function ServicesContent() {
     }
     if (!shopId) return;
 
-    const data = {
-      name: form.name.trim(),
-      description: form.description.trim(),
-      price,
-      duration,
-    };
-
-    if (editing) {
-      Object.assign(editing, data);
-    } else {
-      services.push({ id: `sv-${Date.now()}`, barbershopId: shopId, ...data });
+    setSaving(true);
+    try {
+      await saveService(
+        shopId,
+        {
+          name: form.name.trim(),
+          description: form.description.trim(),
+          price,
+          duration,
+        },
+        editing?.id
+      );
+      setNotice("");
+      setDialogOpen(false);
+      setRefresh((r) => r + 1);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "No pudimos guardar el servicio."
+      );
+    } finally {
+      setSaving(false);
     }
-
-    setNotice("");
-    setDialogOpen(false);
-    refresh();
   }
 
-  function remove(service: ShopService) {
-    if (appointments.some((a) => a.serviceId === service.id)) {
-      setNotice(
-        `No puedes eliminar "${service.name}" porque tiene citas asociadas.`
-      );
-      return;
-    }
+  async function remove(service: ShopService) {
     if (!window.confirm(`¿Eliminar el servicio "${service.name}"?`)) return;
-    const index = services.findIndex((s) => s.id === service.id);
-    if (index !== -1) services.splice(index, 1);
-    setNotice("");
-    refresh();
+    try {
+      await deleteService(service.id);
+      setNotice("");
+      setRefresh((r) => r + 1);
+    } catch (err) {
+      setNotice(
+        err instanceof Error ? err.message : "No pudimos eliminar el servicio."
+      );
+    }
   }
 
   return (
@@ -127,7 +146,9 @@ function ServicesContent() {
 
       <div className="mb-5 flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
-          {list.length} {list.length === 1 ? "servicio" : "servicios"}
+          {list === null
+            ? "Cargando…"
+            : `${list.length} ${list.length === 1 ? "servicio" : "servicios"}`}
         </p>
         <Button
           onClick={openNew}
@@ -147,13 +168,13 @@ function ServicesContent() {
         </p>
       )}
 
-      {list.length === 0 ? (
+      {list !== null && list.length === 0 ? (
         <p className="rounded-xl border border-dashed border-border p-8 text-center text-muted-foreground">
           Aún no tienes servicios. Agrega el primero.
         </p>
       ) : (
         <ul className="space-y-3">
-          {list.map((s) => (
+          {(list ?? []).map((s) => (
             <li
               key={s.id}
               className="flex flex-col gap-4 rounded-xl border border-border bg-card p-5 sm:flex-row sm:items-center sm:justify-between"
@@ -274,9 +295,14 @@ function ServicesContent() {
               </Button>
               <Button
                 type="submit"
+                disabled={saving}
                 className="bg-gold-gradient font-semibold text-primary-foreground hover:opacity-90"
               >
-                {editing ? "Guardar cambios" : "Agregar servicio"}
+                {saving
+                  ? "Guardando..."
+                  : editing
+                    ? "Guardar cambios"
+                    : "Agregar servicio"}
               </Button>
             </div>
           </form>

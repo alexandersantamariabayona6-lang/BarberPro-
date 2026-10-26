@@ -405,3 +405,81 @@ revoke execute on function public.cancel_appointment(uuid) from public, anon;
 grant execute on function public.busy_slots(uuid, date) to anon, authenticated;
 grant execute on function public.create_appointment(uuid, uuid, date, time) to authenticated;
 grant execute on function public.cancel_appointment(uuid) to authenticated;
+
+
+-- ============ Fase 3.3: barbería del admin y servicios ============
+
+-- El admin gestiona solo los servicios de su barbería
+grant insert, update, delete on public.services to authenticated;
+
+create policy "Admin crea servicios de su barbería"
+  on public.services for insert to authenticated
+  with check (public.my_role() = 'admin' and barbershop_id = public.my_barbershop());
+
+create policy "Admin edita servicios de su barbería"
+  on public.services for update to authenticated
+  using (public.my_role() = 'admin' and barbershop_id = public.my_barbershop())
+  with check (public.my_role() = 'admin' and barbershop_id = public.my_barbershop());
+
+create policy "Admin elimina servicios de su barbería"
+  on public.services for delete to authenticated
+  using (public.my_role() = 'admin' and barbershop_id = public.my_barbershop());
+
+-- Crear la barbería del admin (una sola vez) y vincularla a su perfil
+create or replace function public.create_barbershop(
+  p_name text, p_city text, p_address text, p_description text, p_open_hours text
+)
+returns text
+language plpgsql security definer
+set search_path = ''
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_base text;
+  v_slug text;
+  v_n integer := 1;
+  v_id uuid;
+begin
+  if public.my_role() <> 'admin' then
+    raise exception 'Solo los administradores pueden crear una barbería';
+  end if;
+  if public.my_barbershop() is not null then
+    raise exception 'Ya tienes una barbería';
+  end if;
+  if length(trim(coalesce(p_name, ''))) < 2
+     or length(trim(coalesce(p_city, ''))) < 2
+     or length(trim(coalesce(p_address, ''))) < 2 then
+    raise exception 'Nombre, ciudad y dirección son obligatorios';
+  end if;
+
+  -- Dirección web amigable: "La Navaja Dorada" -> "la-navaja-dorada"
+  v_base := regexp_replace(
+    lower(translate(trim(p_name), 'áéíóúüñÁÉÍÓÚÜÑ', 'aeiouunaeiouun')),
+    '[^a-z0-9]+', '-', 'g'
+  );
+  v_base := trim(both '-' from v_base);
+  if v_base = '' then
+    v_base := 'barberia';
+  end if;
+
+  v_slug := v_base;
+  while exists (select 1 from public.barbershops where slug = v_slug) loop
+    v_n := v_n + 1;
+    v_slug := v_base || '-' || v_n;
+  end loop;
+
+  insert into public.barbershops (slug, name, city, address, description, open_hours)
+  values (
+    v_slug, trim(p_name), trim(p_city), trim(p_address),
+    trim(coalesce(p_description, '')), trim(coalesce(p_open_hours, ''))
+  )
+  returning id into v_id;
+
+  update public.profiles set barbershop_id = v_id where id = v_uid;
+
+  return v_slug;
+end;
+$$;
+
+revoke execute on function public.create_barbershop(text, text, text, text, text) from public, anon;
+grant execute on function public.create_barbershop(text, text, text, text, text) to authenticated;

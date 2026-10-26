@@ -6,6 +6,7 @@ export type User = {
   email: string;
   role: Role;
   barbershopId?: string; // solo barbero y admin
+  shopId?: string;
 };
 
 export type Barbershop = {
