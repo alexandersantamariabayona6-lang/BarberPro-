@@ -124,12 +124,13 @@ type BarberRow = {
   name: string;
   specialty: string;
   rating: number;
+  image_url: string | null;
 };
 
 export async function getShopBarbers(shopId: string): Promise<ShopBarber[]> {
   const { data, error } = await supabase
     .from("barbers")
-    .select("id, profile_id, barbershop_id, name, specialty, rating")
+    .select("id, profile_id, barbershop_id, name, specialty, rating, image_url")
     .eq("barbershop_id", shopId)
     .order("created_at");
   if (error) throw new Error(error.message);
@@ -140,6 +141,7 @@ export async function getShopBarbers(shopId: string): Promise<ShopBarber[]> {
     name: b.name,
     specialty: b.specialty,
     rating: Number(b.rating),
+    imageUrl: b.image_url,
   }));
 }
 

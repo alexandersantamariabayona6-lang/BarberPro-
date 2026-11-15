@@ -18,6 +18,7 @@ export type Barbershop = {
   description: string;
   rating: number;
   openHours: string;
+  imageUrl?: string | null;
 };
 
 export type ShopService = {
@@ -36,6 +37,7 @@ export type ShopBarber = {
   name: string;
   specialty: string;
   rating: number;
+  imageUrl?: string | null;
 };
 
 export type AppointmentStatus =

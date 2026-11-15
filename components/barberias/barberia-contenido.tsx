@@ -64,8 +64,17 @@ export function BarberiaContenido({ shop }: { shop: ShopWithDetails }) {
                 key={b.id}
                 className="flex items-center gap-4 rounded-xl border border-border bg-card p-5"
               >
-                <span className="flex size-12 shrink-0 items-center justify-center rounded-full border border-gold/30 font-heading text-lg text-gold">
-                  {b.name.charAt(0)}
+                <span className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-full border border-gold/30 font-heading text-lg text-gold">
+                  {b.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={b.imageUrl}
+                      alt=""
+                      className="size-full object-cover"
+                    />
+                  ) : (
+                    b.name.charAt(0)
+                  )}
                 </span>
                 <div className="min-w-0 flex-1">
                   <h3 className="truncate text-foreground">{b.name}</h3>

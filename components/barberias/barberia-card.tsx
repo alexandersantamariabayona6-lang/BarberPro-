@@ -12,11 +12,19 @@ export function BarberiaCard({ shop }: { shop: ShopWithDetails }) {
   return (
     <Link href={`/barberias/${shop.slug}`} className="group block">
       <article className="overflow-hidden rounded-xl border border-border bg-card transition-all duration-300 group-hover:-translate-y-1 group-hover:border-gold/50">
-        {/* Placeholder de imagen; luego se cambia por la foto real */}
-        <div className="flex h-36 items-center justify-center bg-gradient-to-br from-zinc-900 via-zinc-800 to-gold/20">
-          <span className="font-heading text-5xl text-gold-gradient">
-            {shop.name.charAt(0)}
-          </span>
+                <div className="flex h-36 items-center justify-center overflow-hidden bg-gradient-to-br from-zinc-900 via-zinc-800 to-gold/20">
+          {shop.imageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={shop.imageUrl}
+              alt={shop.name}
+              className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
+            />
+          ) : (
+            <span className="font-heading text-5xl text-gold-gradient">
+              {shop.name.charAt(0)}
+            </span>
+          )}
         </div>
 
         <div className="space-y-3 p-5">
