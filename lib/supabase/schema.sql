@@ -686,3 +686,57 @@ create trigger on_review_created
 revoke execute on function public.create_review(uuid, integer, integer, text) from public, anon;
 revoke execute on function public.refresh_ratings() from public, anon, authenticated;
 grant execute on function public.create_review(uuid, integer, integer, text) to authenticated;
+
+
+
+
+-- ============ Fase 5: fotos de barbería y barberos ============
+
+alter table public.barbershops add column image_url text;
+alter table public.barbers add column image_url text;
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('photos', 'photos', true, 2097152, array['image/jpeg', 'image/png', 'image/webp'])
+on conflict (id) do nothing;
+
+create policy "Fotos visibles para todos"
+  on storage.objects for select
+  using (bucket_id = 'photos');
+
+create policy "Admin sube fotos de su barbería"
+  on storage.objects for insert to authenticated
+  with check (
+    bucket_id = 'photos'
+    and public.my_role() = 'admin'
+    and (storage.foldername(name))[1] = public.my_barbershop()::text
+  );
+
+create policy "Admin reemplaza fotos de su barbería"
+  on storage.objects for update to authenticated
+  using (
+    bucket_id = 'photos'
+    and public.my_role() = 'admin'
+    and (storage.foldername(name))[1] = public.my_barbershop()::text
+  )
+  with check (
+    bucket_id = 'photos'
+    and public.my_role() = 'admin'
+    and (storage.foldername(name))[1] = public.my_barbershop()::text
+  );
+
+create policy "Admin borra fotos de su barbería"
+  on storage.objects for delete to authenticated
+  using (
+    bucket_id = 'photos'
+    and public.my_role() = 'admin'
+    and (storage.foldername(name))[1] = public.my_barbershop()::text
+  );
+
+grant update (image_url) on public.barbershops to authenticated;
+
+create policy "Admin edita su barbería"
+  on public.barbershops for update to authenticated
+  using (public.my_role() = 'admin' and id = public.my_barbershop())
+  with check (public.my_role() = 'admin' and id = public.my_barbershop());
+
+grant update (image_url) on public.barbers to authenticated;
