@@ -4,8 +4,10 @@ import { useEffect, useState } from "react";
 import RoleGuard from "@/components/auth/role-guard";
 import AdminNav from "@/components/admin/admin-nav";
 import DashboardShell from "@/components/layout/dashboard-shell";
+import PhotoUpload from "@/components/photos/photo-upload";
 import { useAuth } from "@/lib/auth/auth-context";
 import { getShopCounts } from "@/lib/data/admin";
+import { getShopPhoto, uploadShopPhoto } from "@/lib/data/photos";
 
 type Counts = { services: number; barbers: number; appointments: number };
 
@@ -13,14 +15,19 @@ function AdminContent() {
   const { user } = useAuth();
   const shopId = user?.shopId;
   const [counts, setCounts] = useState<Counts | null>(null);
+  const [photo, setPhoto] = useState<string | null>(null);
+  const [photoLoaded, setPhotoLoaded] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (!shopId) return;
     let active = true;
-    getShopCounts(shopId)
-      .then((data) => {
-        if (active) setCounts(data);
+    Promise.all([getShopCounts(shopId), getShopPhoto(shopId)])
+      .then(([data, image]) => {
+        if (!active) return;
+        setCounts(data);
+        setPhoto(image);
+        setPhotoLoaded(true);
       })
       .catch((e: Error) => {
         if (active) setError(e.message);
@@ -60,6 +67,21 @@ function AdminContent() {
           </div>
         ))}
       </div>
+
+      <section className="mt-8 rounded-xl border border-border bg-card p-6">
+        <h2 className="text-lg">Foto de tu barbería</h2>
+        <p className="mt-1 mb-4 text-sm text-muted-foreground">
+          Es la imagen que ven los clientes en el directorio y en la página de
+          tu barbería. JPG, PNG o WebP, máximo 2 MB.
+        </p>
+        {shopId && photoLoaded && (
+          <PhotoUpload
+            imageUrl={photo}
+            initial={user?.name?.charAt(0) ?? "B"}
+            onUpload={(file) => uploadShopPhoto(shopId, file)}
+          />
+        )}
+      </section>
     </DashboardShell>
   );
 }
