@@ -48,11 +48,11 @@ export function getAvailableSlots(
   shop: Barbershop,
   service: ShopService,
   date: Date,
-  busy: BusySlot[]
+  busy: BusySlot[],
+  now: Date = new Date()
 ) {
   const { open, close } = parseHours(shop.openHours);
   const key = toDateKey(date);
-  const now = new Date();
   const isToday = key === toDateKey(now);
   const nowMin = now.getHours() * 60 + now.getMinutes();
 

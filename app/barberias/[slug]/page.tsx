@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, Clock, MapPin, Star } from "lucide-react";
 import { BarberiaContenido } from "@/components/barberias/barberia-contenido";
 import { getShopBySlug } from "@/lib/data/queries";
+import BarberBotChat from "@/components/barberbot/barberbot-chat";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -67,6 +68,7 @@ export default async function BarberiaPage({ params }: Props) {
       </header>
 
       <BarberiaContenido shop={shop} />
+      <BarberBotChat slug={shop.slug} shopName={shop.name} />
     </main>
   );
 }
