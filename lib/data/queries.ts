@@ -15,6 +15,7 @@ type ShopRow = {
   description: string;
   open_hours: string;
   rating: number;
+  image_url: string | null;
   services: {
     id: string;
     name: string;
@@ -28,13 +29,14 @@ type ShopRow = {
     name: string;
     specialty: string;
     rating: number;
+    image_url: string | null;
   }[];
 };
 
 const SHOP_SELECT = `
-  id, slug, name, city, address, description, open_hours, rating,
+  id, slug, name, city, address, description, open_hours, rating, image_url,
   services (id, name, description, price, duration_min),
-  barbers (id, profile_id, name, specialty, rating)
+  barbers (id, profile_id, name, specialty, rating, image_url)
 `;
 
 // Convierte la fila de la base de datos al formato que usa la app
@@ -48,6 +50,7 @@ function toShop(row: ShopRow): ShopWithDetails {
     description: row.description,
     rating: Number(row.rating),
     openHours: row.open_hours,
+    imageUrl: row.image_url,
     services: row.services
       .map((s) => ({
         id: s.id,
@@ -65,6 +68,7 @@ function toShop(row: ShopRow): ShopWithDetails {
       name: b.name,
       specialty: b.specialty,
       rating: Number(b.rating),
+      imageUrl: b.image_url,
     })),
   };
 }
