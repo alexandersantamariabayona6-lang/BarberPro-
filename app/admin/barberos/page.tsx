@@ -25,6 +25,8 @@ import {
   type PendingInvitation,
 } from "@/lib/data/admin";
 import type { ShopBarber } from "@/lib/types";
+import PhotoUpload from "@/components/photos/photo-upload";
+import { uploadBarberPhoto } from "@/lib/data/photos";
 
 const dateFormat = new Intl.DateTimeFormat("es-CO", {
   day: "numeric",
@@ -219,8 +221,17 @@ function BarbersContent() {
               className="flex flex-col gap-4 rounded-xl border border-border bg-card p-5 sm:flex-row sm:items-center sm:justify-between"
             >
               <div className="flex min-w-0 items-center gap-4">
-                <span className="flex size-12 shrink-0 items-center justify-center rounded-full border border-gold/30 font-heading text-lg text-gold">
-                  {b.name.charAt(0)}
+                  <span className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-full border border-gold/30 font-heading text-lg text-gold">
+                    {b.imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                      src={b.imageUrl}
+                      alt=""
+                      className="size-full object-cover"
+                    />
+                  ) : (
+                    b.name.charAt(0)
+                  )}
                 </span>
                 <div className="min-w-0">
                   <h3 className="truncate text-foreground">{b.name}</h3>
@@ -270,6 +281,16 @@ function BarbersContent() {
           </DialogHeader>
 
           <form onSubmit={onSubmit} className="space-y-4">
+              {editing && shopId && (
+                <PhotoUpload
+                  key={editing.id}
+                  shape="round"
+                  imageUrl={editing.imageUrl}
+                  initial={editing.name.charAt(0)}
+                  onUpload={(file) => uploadBarberPhoto(shopId, editing.id, file)}
+                  onUploaded={() => setRefresh((r) => r + 1)}
+                />
+              )}
             <div className="space-y-2">
               <Label htmlFor="barber-name">Nombre</Label>
               <Input
