@@ -565,3 +565,124 @@ revoke execute on function public.remove_barber(uuid) from public, anon;
 revoke execute on function public.confirm_appointment(uuid) from public, anon;
 grant execute on function public.remove_barber(uuid) to authenticated;
 grant execute on function public.confirm_appointment(uuid) to authenticated;
+
+-- ============ Fase 4: reseñas y calificaciones ============
+
+create table public.reviews (
+  id uuid primary key default gen_random_uuid(),
+  appointment_id uuid not null unique references public.appointments (id) on delete cascade,
+  barbershop_id uuid not null references public.barbershops (id) on delete cascade,
+  barber_id uuid references public.barbers (id) on delete set null,
+  client_id uuid not null references public.profiles (id) on delete cascade,
+  author_name text not null,
+  shop_rating smallint not null check (shop_rating between 1 and 5),
+  barber_rating smallint check (barber_rating between 1 and 5),
+  comment text not null default '' check (char_length(comment) <= 500),
+  created_at timestamptz not null default now()
+);
+
+create index on public.reviews (barbershop_id, created_at desc);
+create index on public.reviews (barber_id);
+
+alter table public.reviews enable row level security;
+
+-- Las reseñas son públicas; nadie inserta directo, solo con create_review
+grant select on public.reviews to anon, authenticated;
+
+create policy "Reseñas visibles para todos"
+  on public.reviews for select using (true);
+
+-- Crear reseña (todas las validaciones en el servidor)
+create or replace function public.create_review(
+  p_appointment uuid,
+  p_shop_rating integer,
+  p_barber_rating integer,
+  p_comment text
+)
+returns uuid
+language plpgsql security definer
+set search_path = ''
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_a public.appointments%rowtype;
+  v_name text;
+  v_id uuid;
+begin
+  if v_uid is null then
+    raise exception 'Debes iniciar sesión';
+  end if;
+
+  select * into v_a from public.appointments where id = p_appointment;
+  if not found or v_a.client_id <> v_uid then
+    raise exception 'Cita no encontrada';
+  end if;
+
+  if v_a.status <> 'confirmada' then
+    raise exception 'Solo puedes reseñar citas confirmadas';
+  end if;
+
+  if (v_a.appt_date + v_a.appt_time) > (now() at time zone 'America/Bogota') then
+    raise exception 'Podrás reseñar cuando pase tu cita';
+  end if;
+
+  if exists (select 1 from public.reviews where appointment_id = p_appointment) then
+    raise exception 'Ya reseñaste esta cita';
+  end if;
+
+  if p_shop_rating is null or p_shop_rating not between 1 and 5 then
+    raise exception 'La calificación de la barbería debe ser de 1 a 5';
+  end if;
+  if p_barber_rating is not null and p_barber_rating not between 1 and 5 then
+    raise exception 'La calificación del barbero debe ser de 1 a 5';
+  end if;
+
+  -- Solo el primer nombre se muestra públicamente
+  select split_part(full_name, ' ', 1) into v_name
+  from public.profiles where id = v_uid;
+
+  insert into public.reviews
+    (appointment_id, barbershop_id, barber_id, client_id, author_name,
+     shop_rating, barber_rating, comment)
+  values
+    (p_appointment, v_a.barbershop_id, v_a.barber_id, v_uid, v_name,
+     p_shop_rating, p_barber_rating, left(trim(coalesce(p_comment, '')), 500))
+  returning id into v_id;
+
+  return v_id;
+end;
+$$;
+
+-- Recalcular los promedios que ya muestra la app (columna rating)
+create or replace function public.refresh_ratings()
+returns trigger
+language plpgsql security definer
+set search_path = ''
+as $$
+begin
+  update public.barbershops
+  set rating = coalesce(
+    (select round(avg(shop_rating), 1) from public.reviews
+     where barbershop_id = new.barbershop_id), 5.0)
+  where id = new.barbershop_id;
+
+  if new.barber_id is not null and new.barber_rating is not null then
+    update public.barbers
+    set rating = coalesce(
+      (select round(avg(barber_rating), 1) from public.reviews
+       where barber_id = new.barber_id and barber_rating is not null), 5.0)
+    where id = new.barber_id;
+  end if;
+
+  return new;
+end;
+$$;
+
+create trigger on_review_created
+  after insert on public.reviews
+  for each row execute function public.refresh_ratings();
+
+-- Permisos de las funciones
+revoke execute on function public.create_review(uuid, integer, integer, text) from public, anon;
+revoke execute on function public.refresh_ratings() from public, anon, authenticated;
+grant execute on function public.create_review(uuid, integer, integer, text) to authenticated;

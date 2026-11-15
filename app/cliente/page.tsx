@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { CalendarX, MapPin, Scissors } from "lucide-react";
+import { CalendarX, MapPin, Scissors, Star } from "lucide-react";
 import RoleGuard from "@/components/auth/role-guard";
+import ReviewDialog from "@/components/reviews/review-dialog";
 import DashboardShell from "@/components/layout/dashboard-shell";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,6 +12,7 @@ import {
   getMyAppointments,
   type AppointmentView,
 } from "@/lib/data/appointments";
+import { getReviewedAppointmentIds } from "@/lib/data/reviews";
 import { formatCOP } from "@/lib/format";
 
 const dateFormat = new Intl.DateTimeFormat("es-CO", {
@@ -28,9 +30,11 @@ function startsAt(a: AppointmentView) {
 function AppointmentCard({
   appointment,
   onCancel,
+  onReview,
 }: {
   appointment: AppointmentView;
   onCancel?: () => void;
+  onReview?: () => void;
 }) {
   return (
     <li className="flex flex-col gap-4 rounded-xl border border-border bg-card p-5 sm:flex-row sm:items-center sm:justify-between">
@@ -70,6 +74,17 @@ function AppointmentCard({
             Cancelar cita
           </Button>
         )}
+        {onReview && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onReview}
+            className="border-gold/40 text-gold-light hover:bg-accent hover:text-gold-light"
+          >
+            <Star className="mr-1 size-4" />
+            Dejar reseña
+          </Button>
+        )}
       </div>
     </li>
   );
@@ -79,12 +94,17 @@ function ClientContent() {
   const [items, setItems] = useState<AppointmentView[] | null>(null);
   const [error, setError] = useState("");
   const [refresh, setRefresh] = useState(0);
+  const [reviewed, setReviewed] = useState<Set<string>>(new Set());
+  const [reviewing, setReviewing] = useState<AppointmentView | null>(null);
 
   useEffect(() => {
     let active = true;
     getMyAppointments()
-      .then((data) => {
-        if (active) setItems(data);
+      .then(async (data) => {
+        const ids = await getReviewedAppointmentIds(data.map((a) => a.id));
+        if (!active) return;
+        setItems(data);
+        setReviewed(ids);
       })
       .catch((e: Error) => {
         if (active) setError(e.message);
@@ -164,12 +184,33 @@ function ClientContent() {
               <h2 className="text-xl">Historial</h2>
               <ul className="mt-4 space-y-3">
                 {history.map((a) => (
-                  <AppointmentCard key={a.id} appointment={a} />
+                  <AppointmentCard
+                    key={a.id}
+                    appointment={a}
+                    onReview={
+                      a.status === "confirmada" && !reviewed.has(a.id)
+                        ? () => setReviewing(a)
+                        : undefined
+                    }
+                  />
                 ))}
               </ul>
             </section>
           )}
         </>
+      )}
+
+      {reviewing && (
+        <ReviewDialog
+          appointmentId={reviewing.id}
+          shopName={reviewing.shopName}
+          barberName={reviewing.barberName}
+          open
+          onOpenChange={(open) => {
+            if (!open) setReviewing(null);
+          }}
+          onDone={() => setRefresh((r) => r + 1)}
+        />
       )}
     </DashboardShell>
   );

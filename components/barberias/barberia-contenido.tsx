@@ -2,6 +2,7 @@ import { Star } from "lucide-react";
 import type { ShopWithDetails } from "@/lib/data/queries";
 import { formatCOP } from "@/lib/format";
 import { ReservaModal } from "./reserva-modal";
+import { ReviewsSection } from "@/components/reviews/reviews-section";
 
 export function BarberiaContenido({ shop }: { shop: ShopWithDetails }) {
   const { services, barbers } = shop;
@@ -81,6 +82,8 @@ export function BarberiaContenido({ shop }: { shop: ShopWithDetails }) {
           </ul>
         )}
       </section>
+      
+      <ReviewsSection shopId={shop.id} />
     </>
   );
 }
