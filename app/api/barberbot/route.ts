@@ -7,7 +7,7 @@ import { supabasePublic } from "@/lib/supabase/public";
 
 export const dynamic = "force-dynamic";
 
-const MODEL = process.env.GEMINI_MODEL ?? "gemini-3.5-flash";
+const MODEL = process.env.GEMINI_MODEL ?? "gemini-3.1-flash-lite";
 const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
 
 const MAX_MESSAGES = 16;
@@ -131,6 +131,7 @@ ${barbers || "(ninguno)"}
 
 CÓMO TRABAJAS:
 - Hablas en español colombiano, tuteando, con frases cortas y naturales. Sin listas largas ni emojis en exceso.
+-Escribe en texto plano: sin asteriscos, sin negritas, sin encabezados ni formatos markdown. Si das varias opciones, ponlas una por linea empezando con un guion.
 - Solo hablas de esta barbería y de reservar citas. Si te piden otra cosa, redirige amablemente.
 - Para reservar necesitas: servicio, barbero, día y hora. Si el cliente no tiene preferencia de barbero, sugiere uno. Pregunta solo lo que falte, una cosa a la vez.
 - NUNCA inventes disponibilidad. Antes de ofrecer horas llama a get_available_slots y ofrece solo las que devuelva (máximo 4 o 5 opciones, las más cercanas a lo que pidió).
