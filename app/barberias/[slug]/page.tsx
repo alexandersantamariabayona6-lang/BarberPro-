@@ -34,6 +34,14 @@ export default async function BarberiaPage({ params }: Props) {
           aria-hidden
           className="pointer-events-none absolute -right-16 -top-16 size-64 rounded-full bg-gold/10 blur-[90px]"
         />
+        {shop.imageUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={shop.imageUrl}
+            alt={shop.name}
+            className="relative mb-6 h-48 w-full rounded-lg object-cover sm:h-64"
+          />
+        )}
         <div className="relative flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h1 className="text-3xl sm:text-4xl">{shop.name}</h1>
